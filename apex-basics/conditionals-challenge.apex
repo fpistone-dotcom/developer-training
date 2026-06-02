@@ -26,3 +26,5 @@ if ((characteristics1 == 'Brave' && characteristics2 == 'Mischievous') || (chara
 }
 
 System.debug('The Student is in... ' + house + '!!!!');
+
+//finished
