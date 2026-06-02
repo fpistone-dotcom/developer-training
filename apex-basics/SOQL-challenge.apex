@@ -124,3 +124,5 @@ for (Account acc : accountMap.values()) {
 
 List<Opportunity> hotCustomerOpps = [SELECT Id, Name FROM Opportunity WHERE AccountId IN :hotCustomerAccountIds];
 System.debug('Opportunities associated with Hot Customer Accounts: ' + hotCustomerOpps);
+
+//finished
