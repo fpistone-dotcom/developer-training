@@ -92,3 +92,5 @@ for (String planet : distanceFromSunMapInAu.keySet()) {
     }
 } 
 System.debug('Planets that are more than 3 au from the sun: ' + distantPlanets);
+
+//finished
