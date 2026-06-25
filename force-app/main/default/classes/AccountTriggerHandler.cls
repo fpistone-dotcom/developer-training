@@ -4,6 +4,8 @@ public class AccountTriggerHandler {
 
     public static void afterUpdate(List<Account> newList, Map<Id, Account> oldMap) {
         updateRelatedOpportunities(newList, oldMap);
+
+        pushShipToChangesToQuotes(newList, oldMap);
     }
 
     /*************** Helper Methods ***************/
@@ -63,4 +65,32 @@ public class AccountTriggerHandler {
 
     }
 
+    // Requirement 2.6.2 (Part 4):
+    // If the Account Ship To changes, push updates to child Quotes in Draft.
+
+    private static void pushShipToChangesToQuotes(List<Account> newList, Map<Id, Account> oldMap) {
+        Set<Id> changedAccIds = new Set<Id>();
+
+        // Step 1: Filter only Accounts where the field changed
+        for (Account acc : newList) {
+            if (acc.Ship_To__c != oldMap.get(acc.Id).Ship_To__c) {
+                changedAccIds.add(acc.Id);
+            }
+        }
+
+        if (changedAccIds.isEmpty()) return;
+
+        // Step 2: Query all child Quotes for those Accounts in Draft
+        List<Quote__c> childQuotesToUpdate = [
+            SELECT Id 
+            FROM Quote__c 
+            WHERE Account__c IN :changedAccIds 
+            AND Status__c = 'Draft'
+        ];
+
+        // Step 3: Perform bulk DML
+        if (!childQuotesToUpdate.isEmpty()) {
+            update childQuotesToUpdate;
+        }
+    }
 }
