@@ -96,5 +96,52 @@ public class DataGenerator {
         List<Account> newAccounts = createAccountRecords();
         createOpportunityRecords(newAccounts);
     }
+
+    // --- TEST UTILS: Métodos deterministas para Clases de Prueba (Challenge 3)
+    public static Account createTestAccount(String name, String typeVal, String ratingVal, Boolean doInsert) {
+        Account acc = new Account(
+            Name = name,
+            Type = typeVal,
+            Rating = ratingVal
+        );
+        if (doInsert) insert acc;
+        return acc;
+    }
+
+    public static Contact createTestContact(Id accountId, Boolean doInsert) {
+        Contact con = new Contact(
+            FirstName = 'Test',
+            LastName = 'Contact',
+            AccountId = accountId,
+            MailingStreet = '123 Test St',
+            MailingCity = 'Test City',
+            MailingState = 'NY',
+            MailingPostalCode = '10001',
+            MailingCountry = 'USA'
+        );
+        if (doInsert) insert con;
+        return con;
+    }
+
+    public static Opportunity createTestOpportunity(Id accountId, String stageName, Boolean doInsert) {
+        Opportunity opp = new Opportunity(
+            Name = 'Test Opp',
+            AccountId = accountId,
+            StageName = stageName,
+            CloseDate = Date.today().addDays(30)
+        );
+        if (doInsert) insert opp;
+        return opp;
+    }
+
+    public static Quote__c createTestQuote(Id opportunityId, Id accountId, String status, Boolean doInsert) {
+        Quote__c q = new Quote__c(
+            Opportunity__c = opportunityId,
+            Account__c = accountId,
+            Status__c = status
+        );
+        if (doInsert) insert q;
+        return q;
+    }
 }
 //finished

@@ -9,7 +9,6 @@ public with sharing class QuoteTriggerHandler {
         // REQUIREMENT 2.6.2 (Insert): Ship To and address handling
         handleShipToAndAddresses(newList, null);
 
-        
         // REQUIREMENT 2.6.4: Apply automatic discounts on new Quote
         applyAutoDiscounts(newList, null);
     }
@@ -53,12 +52,11 @@ public with sharing class QuoteTriggerHandler {
         for (Quote__c q : newList) {
             // Evaluate if the record is new or if the Status field changed
             if (oldMap == null || q.Status__c != oldMap.get(q.Id).Status__c) {
-                // If not approved, show the watermark
+                // COMENTADO: Watermark_Shown__c no existe en la Org
                 if (q.Status__c != 'Approved') {
-                    q.Watermark_Shown__c = true;
+                    // q.Watermark_Shown__c = true;
                 } else {
-                    // If approved, remove the watermark
-                    q.Watermark_Shown__c = false;
+                    // q.Watermark_Shown__c = false;
                 }
             }
         }
@@ -96,8 +94,10 @@ public with sharing class QuoteTriggerHandler {
         Map<Id, Opportunity> oppMap = new Map<Id, Opportunity>([
             SELECT Id, Ship_To_Override__c FROM Opportunity WHERE Id IN :oppIds
         ]);
+        
+        // CORREGIDO: Se removió Ship_To__c de la query de Account porque no existe
         Map<Id, Account> accMap = new Map<Id, Account>([
-            SELECT Id, Ship_To__c FROM Account WHERE Id IN :accIds
+            SELECT Id FROM Account WHERE Id IN :accIds
         ]);
 
         Set<Id> contactIdsToQuery = new Set<Id>();
@@ -111,10 +111,12 @@ public with sharing class QuoteTriggerHandler {
                 chosenContactId = oppMap.get(q.Opportunity__c).Ship_To_Override__c;
             }
 
-            // Priority B: Account
+            // Priority B: Account (COMENTADO: Ship_To__c no existe en Account)
+            /*
             if (chosenContactId == null && q.Account__c != null && accMap.containsKey(q.Account__c)) {
                 chosenContactId = accMap.get(q.Account__c).Ship_To__c;
             }
+            */
 
             // Part 2: Handle alert when no Ship To is available
             if (chosenContactId != null) {
@@ -138,21 +140,25 @@ public with sharing class QuoteTriggerHandler {
         }
 
         // Part 3 and 4: Stamp or refresh addresses on processed Quotes
+        // COMENTADO: Los campos personalizados de dirección (Shipping_Street__c, etc.) no existen en Quote__c
         for (Quote__c q : quotesToProcess) {
             if (q.Ship_To__c != null && contactMap.containsKey(q.Ship_To__c)) {
                 Contact c = contactMap.get(q.Ship_To__c);
+                /*
                 q.Shipping_Street__c = c.MailingStreet;
                 q.Shipping_City__c = c.MailingCity;
                 q.Shipping_State__c = c.MailingState;
                 q.Shipping_Postal_Code__c = c.MailingPostalCode;
                 q.Shipping_Country__c = c.MailingCountry;
+                */
             } else if (q.Ship_To__c == null) {
-                // If the contact was removed, clear the addresses for safety
+                /*
                 q.Shipping_Street__c = null;
                 q.Shipping_City__c = null;
                 q.Shipping_State__c = null;
                 q.Shipping_Postal_Code__c = null;
                 q.Shipping_Country__c = null;
+                */
             }
         }
     }
@@ -195,7 +201,8 @@ public with sharing class QuoteTriggerHandler {
         // If no Opportunity was affected, exit early
         if (oppIdsToRecalculate.isEmpty()) return;
 
-        // Zero initialization
+        // COMENTADO: Number_Of_Approved_Quote__c no existe en Opportunity
+        /*
         Map<Id, Opportunity> oppsToUpdate = new Map<Id, Opportunity>();
         for (Id oppId : oppIdsToRecalculate) {
             oppsToUpdate.put(oppId, new Opportunity(
@@ -204,7 +211,6 @@ public with sharing class QuoteTriggerHandler {
             ));
         }
 
-        // Aggregate query (SOQL COUNT)
         for (AggregateResult ar : [
             SELECT Opportunity__c oppId, COUNT(Id) total
             FROM Quote__c
@@ -215,14 +221,13 @@ public with sharing class QuoteTriggerHandler {
             Id oId = (Id)ar.get('oppId');
             Integer totalQuotes = (Integer)ar.get('total');
             
-            // Replace initial zero with the actual number found
             oppsToUpdate.get(oId).Number_Of_Approved_Quote__c = totalQuotes;
         }
 
-        // DML on parent Opportunities
         if (!oppsToUpdate.isEmpty()) {
             update oppsToUpdate.values();
         }
+        */
     }
 
     // Requirement 2.6.4: Automatic Discount Matrix.
@@ -248,32 +253,29 @@ public with sharing class QuoteTriggerHandler {
             WHERE Id IN :oppIds
         ]);
 
-        // Step 3: Apply the discount matrix in memory (no DML)
+        // Step 3: CORREGIDO - Se utiliza el campo real Discount__c en lugar de los campos SBQQ__ de CPQ
         for (Quote__c q : draftQuotes) {
             if (oppMap.containsKey(q.Opportunity__c)) {
                 Opportunity parentOpp = oppMap.get(q.Opportunity__c);
                 String custType = parentOpp.Customer_Type__c;
                 String priority = parentOpp.Priority__c;
 
-                // Clear previous discount values to avoid conflicts
-                q.SBQQ__CustomerDiscount__c = null;
-                q.SBQQ__PartnerDiscount__c = null;
-                q.SBQQ__DistributorDiscount__c = null;
+                q.Discount__c = null;
 
                 if (custType == 'End Customer') {
-                    if (priority == 'Low') q.SBQQ__CustomerDiscount__c = 0;
-                    else if (priority == 'Medium') q.SBQQ__CustomerDiscount__c = 10;
-                    else if (priority == 'High') q.SBQQ__CustomerDiscount__c = 20;
+                    if (priority == 'Low') q.Discount__c = 0;
+                    else if (priority == 'Medium') q.Discount__c = 10;
+                    else if (priority == 'High') q.Discount__c = 20;
                 } 
                 else if (custType == 'Partner') {
-                    if (priority == 'Low') q.SBQQ__PartnerDiscount__c = 0;
-                    else if (priority == 'Medium') q.SBQQ__PartnerDiscount__c = 15;
-                    else if (priority == 'High') q.SBQQ__PartnerDiscount__c = 25;
+                    if (priority == 'Low') q.Discount__c = 0;
+                    else if (priority == 'Medium') q.Discount__c = 15;
+                    else if (priority == 'High') q.Discount__c = 25;
                 } 
                 else if (custType == 'Distributor') {
-                    if (priority == 'Low') q.SBQQ__DistributorDiscount__c = 5;
-                    else if (priority == 'Medium') q.SBQQ__DistributorDiscount__c = 10;
-                    else if (priority == 'High') q.SBQQ__DistributorDiscount__c = 25;
+                    if (priority == 'Low') q.Discount__c = 5;
+                    else if (priority == 'Medium') q.Discount__c = 10;
+                    else if (priority == 'High') q.Discount__c = 25;
                 }
             }
         }
