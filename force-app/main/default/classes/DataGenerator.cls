@@ -48,10 +48,8 @@ public class DataGenerator {
             accountList.add(acc);
         }
         
-        //Insertar en la base de datos para generar los Ids
         insert accountList;
 
-        // Volver a consultar los registros para obtener los Ids y otros campos como CreatedById
         accountList = [SELECT Id, Name, CustomerPriority__c, CreatedById FROM Account WHERE Id IN :accountList];
         
         return accountList;
@@ -79,7 +77,6 @@ public class DataGenerator {
                 // Requirement 3.c: Name: Account record's Name plus the word "Opportunity"
                 opp.Name = acc.Name + ' Opportunity';
                 
-                // Campo requerido por Salesforce (no está en la consigna pero es necesario)
                 opp.CloseDate = Date.today().addDays(30);
 
                 opportunityList.add(opp);
@@ -144,4 +141,3 @@ public class DataGenerator {
         return q;
     }
 }
-//finished

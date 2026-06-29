@@ -10,14 +10,14 @@ public with sharing class OpportunityTriggerHandler {
         updateRelatedAccount(newList, oldMap);
 
         pushChangesToDraftQuotes(newList, oldMap);
+
+        updateUserWonOpportunitiesCount(newList, oldMap);
     }
 
 
     // --- HELPER METHODS ---
 
-    // Requirement 2.6.1 and 2.6.4:
-    // Centralize all default assignments when creating an Opportunity.
-    
+    // Requirement 2.6.1 and 2.6.4:    
     private static void defaultOpportunityType(List<Opportunity> newList) {
         
         Set<Id> accountIds = new Set<Id>();
@@ -120,7 +120,44 @@ public with sharing class OpportunityTriggerHandler {
         if (!childQuotesToUpdate.isEmpty()) {
             update childQuotesToUpdate; 
             // This triggers the QuoteTrigger in update mode,
-            // which will run address and discount logic.
         }
+    }
+
+    // Requirement 4.1: Collect Owner IDs when Opportunity changes to Closed Won
+    private static void updateUserWonOpportunitiesCount(List<Opportunity> newList, Map<Id, Opportunity> oldMap) {
+        List<Id> ownerIds = new List<Id>();
+        
+        for (Opportunity opp : newList) {
+            Opportunity oldOpp = oldMap.get(opp.Id);
+            
+            if (opp.StageName == 'Closed Won' && oldOpp.StageName != 'Closed Won') {
+                ownerIds.add(opp.OwnerId);
+            }
+        }
+        
+        if (!ownerIds.isEmpty()) {
+            // Despachamos el trabajo al hilo asincrónico futuro
+            incrementUserWonOpportunities(ownerIds);
+        }
+    }
+
+    //FUTURE METHOD: Runs in a separate thread to update Setup Objects (User) and avoid Mixed DML
+    @Future
+    public static void incrementUserWonOpportunities(List<Id> ownerIds) {
+        Map<Id, Integer> ownerIncrementMap = new Map<Id, Integer>();
+        for (Id ownerId : ownerIds) {
+            if (!ownerIncrementMap.containsKey(ownerId)) {
+                ownerIncrementMap.put(ownerId, 0);
+            }
+            ownerIncrementMap.put(ownerId, ownerIncrementMap.get(ownerId) + 1);
+        }
+
+        List<User> usersToUpdate = [SELECT Id, Number_of_Won_Opportunities__c FROM User WHERE Id IN :ownerIncrementMap.keySet()];
+        for (User u : usersToUpdate) {
+            Decimal currentWon = u.Number_of_Won_Opportunities__c != null ? u.Number_of_Won_Opportunities__c : 0;
+            u.Number_of_Won_Opportunities__c = currentWon + ownerIncrementMap.get(u.Id);
+        }
+        
+        update usersToUpdate;
     }
 }

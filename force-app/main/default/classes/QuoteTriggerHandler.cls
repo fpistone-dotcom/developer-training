@@ -52,11 +52,10 @@ public with sharing class QuoteTriggerHandler {
         for (Quote__c q : newList) {
             // Evaluate if the record is new or if the Status field changed
             if (oldMap == null || q.Status__c != oldMap.get(q.Id).Status__c) {
-                // COMENTADO: Watermark_Shown__c no existe en la Org
                 if (q.Status__c != 'Approved') {
-                    // q.Watermark_Shown__c = true;
+                    q.Watermark_Shown__c = true;
                 } else {
-                    // q.Watermark_Shown__c = false;
+                    q.Watermark_Shown__c = false;
                 }
             }
         }
@@ -70,10 +69,7 @@ public with sharing class QuoteTriggerHandler {
         List<Quote__c> quotesToProcess = new List<Quote__c>();
 
         for (Quote__c q : newList) {
-            // Condition for insert
             Boolean isNewRecord = (oldMap == null);
-            
-            // Condition for update
             Boolean requiresUpdate = (oldMap != null && 
                 (q.Status__c == 'Draft' || 
                 q.Opportunity__c != oldMap.get(q.Id).Opportunity__c || 
@@ -87,17 +83,14 @@ public with sharing class QuoteTriggerHandler {
             }
         }
 
-        // If no Quote meets the criteria, exit early
         if (quotesToProcess.isEmpty()) return;
 
-        // Bulk SOQL: fetch parent Opportunity and Account values
         Map<Id, Opportunity> oppMap = new Map<Id, Opportunity>([
             SELECT Id, Ship_To_Override__c FROM Opportunity WHERE Id IN :oppIds
         ]);
         
-        // CORREGIDO: Se removió Ship_To__c de la query de Account porque no existe
         Map<Id, Account> accMap = new Map<Id, Account>([
-            SELECT Id FROM Account WHERE Id IN :accIds
+            SELECT Id, Ship_To__c FROM Account WHERE Id IN :accIds
         ]);
 
         Set<Id> contactIdsToQuery = new Set<Id>();
@@ -111,12 +104,10 @@ public with sharing class QuoteTriggerHandler {
                 chosenContactId = oppMap.get(q.Opportunity__c).Ship_To_Override__c;
             }
 
-            // Priority B: Account (COMENTADO: Ship_To__c no existe en Account)
-            /*
+            // Priority B: Account
             if (chosenContactId == null && q.Account__c != null && accMap.containsKey(q.Account__c)) {
                 chosenContactId = accMap.get(q.Account__c).Ship_To__c;
             }
-            */
 
             // Part 2: Handle alert when no Ship To is available
             if (chosenContactId != null) {
@@ -129,7 +120,6 @@ public with sharing class QuoteTriggerHandler {
             }
         }
 
-        // Bulk SOQL: fetch contact addresses
         Map<Id, Contact> contactMap = new Map<Id, Contact>();
         if (!contactIdsToQuery.isEmpty()) {
             contactMap = new Map<Id, Contact>([
@@ -140,35 +130,28 @@ public with sharing class QuoteTriggerHandler {
         }
 
         // Part 3 and 4: Stamp or refresh addresses on processed Quotes
-        // COMENTADO: Los campos personalizados de dirección (Shipping_Street__c, etc.) no existen en Quote__c
         for (Quote__c q : quotesToProcess) {
             if (q.Ship_To__c != null && contactMap.containsKey(q.Ship_To__c)) {
                 Contact c = contactMap.get(q.Ship_To__c);
-                /*
                 q.Shipping_Street__c = c.MailingStreet;
                 q.Shipping_City__c = c.MailingCity;
                 q.Shipping_State__c = c.MailingState;
                 q.Shipping_Postal_Code__c = c.MailingPostalCode;
                 q.Shipping_Country__c = c.MailingCountry;
-                */
             } else if (q.Ship_To__c == null) {
-                /*
                 q.Shipping_Street__c = null;
                 q.Shipping_City__c = null;
                 q.Shipping_State__c = null;
                 q.Shipping_Postal_Code__c = null;
                 q.Shipping_Country__c = null;
-                */
             }
         }
     }
 
     // Requirement 2.6.3:
-    // Count approved Quotes per Opportunity and update the manual roll-up summary.
     private static void countApprovedQuotes(List<Quote__c> newList, Map<Id, Quote__c> oldMap) {
         Set<Id> oppIdsToRecalculate = new Set<Id>();
 
-        // Scenario A: Insert, Update or Undelete (newList has data)
         if (newList != null) {
             for (Quote__c q : newList) {
                 Quote__c oldQ = (oldMap != null) ? oldMap.get(q.Id) : null;
@@ -189,7 +172,6 @@ public with sharing class QuoteTriggerHandler {
                 }
             }
         } 
-        // Scenario B: Delete (newList is null, only oldMap available)
         else if (oldMap != null) {
             for (Quote__c oldQ : oldMap.values()) {
                 if (oldQ.Status__c == 'Approved' && oldQ.Opportunity__c != null) {
@@ -198,16 +180,13 @@ public with sharing class QuoteTriggerHandler {
             }
         }
 
-        // If no Opportunity was affected, exit early
         if (oppIdsToRecalculate.isEmpty()) return;
 
-        // COMENTADO: Number_Of_Approved_Quote__c no existe en Opportunity
-        /*
         Map<Id, Opportunity> oppsToUpdate = new Map<Id, Opportunity>();
         for (Id oppId : oppIdsToRecalculate) {
             oppsToUpdate.put(oppId, new Opportunity(
                 Id = oppId, 
-                Number_Of_Approved_Quote__c = 0
+                Number_Of_Approved_Quotes__c = 0
             ));
         }
 
@@ -221,22 +200,19 @@ public with sharing class QuoteTriggerHandler {
             Id oId = (Id)ar.get('oppId');
             Integer totalQuotes = (Integer)ar.get('total');
             
-            oppsToUpdate.get(oId).Number_Of_Approved_Quote__c = totalQuotes;
+            oppsToUpdate.get(oId).Number_Of_Approved_Quotes__c = totalQuotes;
         }
 
         if (!oppsToUpdate.isEmpty()) {
             update oppsToUpdate.values();
         }
-        */
     }
 
     // Requirement 2.6.4: Automatic Discount Matrix.
-    // Evaluate Opportunity Type and Priority to assign the correct Quote discount.
     private static void applyAutoDiscounts(List<Quote__c> newList, Map<Id, Quote__c> oldMap) {
         Set<Id> oppIds = new Set<Id>();
         List<Quote__c> draftQuotes = new List<Quote__c>();
 
-        // Step 1: Filter only Draft Quotes with a linked Opportunity
         for (Quote__c q : newList) {
             if (q.Status__c == 'Draft' && q.Opportunity__c != null) {
                 draftQuotes.add(q);
@@ -246,14 +222,12 @@ public with sharing class QuoteTriggerHandler {
 
         if (draftQuotes.isEmpty()) return;
 
-        // Step 2: SOQL to get Customer_Type__c and Priority__c from parent Opportunities
         Map<Id, Opportunity> oppMap = new Map<Id, Opportunity>([
             SELECT Id, Customer_Type__c, Priority__c 
             FROM Opportunity 
             WHERE Id IN :oppIds
         ]);
 
-        // Step 3: CORREGIDO - Se utiliza el campo real Discount__c en lugar de los campos SBQQ__ de CPQ
         for (Quote__c q : draftQuotes) {
             if (oppMap.containsKey(q.Opportunity__c)) {
                 Opportunity parentOpp = oppMap.get(q.Opportunity__c);
