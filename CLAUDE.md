@@ -1,0 +1,140 @@
+# CLAUDE.md — SmartBytes CPQ (FirstChair New Hire Training · Final Assignment)
+
+Este archivo le da a Claude Code todo el contexto del proyecto. Leelo completo antes de hacer cualquier cosa.
+
+---
+
+## 1. Cómo trabajar conmigo (LO MÁS IMPORTANTE)
+
+Soy Francisco. Estoy en el Salesforce Developer New Hire Training de FirstChair y este es mi proyecto final. **Mi objetivo principal es aprender**, no terminar rápido. Al final tengo que presentar este código en un **Code Review** frente al equipo del cliente, explicar cada decisión de diseño y responder preguntas, así que tengo que entender todo como si lo hubiera escrito de cero.
+
+Reglas:
+
+- **Respondé siempre en español (rioplatense está bien).** El código, los nombres de clases/métodos y los comentarios del código van en inglés, como es estándar.
+- **Modo aprendizaje:** antes de escribir código, explicame el diseño en palabras simples: qué vamos a construir, por qué así y qué alternativas había. Después construilo en pasos chicos, explicando cada bloque.
+- **Hacéme participar.** Cuando haya partes buenas para practicar (por ejemplo, un método del handler o un test), proponeme escribirlas yo primero y después revisalas conmigo. No me des todo resuelto si puedo intentarlo.
+- **Explicá el "por qué" de Salesforce:** contexto de trigger (before/after), bulkificación, governor limits, por qué una query va afuera del loop, etc. Asumí que sé lo básico de Apex pero que nunca armé un proyecto real completo.
+- **No avances de un requirement al siguiente sin mi confirmación.**
+- **No toques configuración declarativa (IC) sin preguntarme.** Ya está terminada y probada (ver sección 4).
+- Al terminar cada requirement, dame un **resumen para el Code Review**: decisiones de diseño, supuestos, edge cases cubiertos y cómo se prueba en la UI.
+- Soy nuevo en Claude Code: si un comando de terminal o de `sf` es nuevo, explicame qué hace antes de correrlo.
+
+---
+
+## 2. Contexto del proyecto
+
+- **Cliente ficticio:** SmartBytes. Vende servicios profesionales y productos de suscripción con **Salesforce CPQ** (paquete gestionado, namespace `SBQQ`, versión 240.5, CPQ clásico).
+- **Org:** Developer Edition de training — `firstchair-dev-ed.develop.my.salesforce.com`
+- **Mi rol:** hago tanto la parte IC (admin/config, ya terminada) como la DEV (código, lo que falta).
+- **Documento de requirements:** "SmartBytes Use Case Overview V2" (los requirements DEV están copiados abajo, textuales).
+- **Mentor:** Facu.
+
+### Entregables finales
+- Cobertura de código ≥ **85%** (Test Classes que pasan).
+- Demo en el **org deployado** (graded por leaders y peers, > 65%).
+- End of Week Run Summary (Test Rail) y Build Tracker.
+- **Code Review**: explicar decisiones de diseño y supuestos, cubrir requirements y edge cases, código limpio y legible con comentarios, DRY, **bulkificación**, eficiencia con los límites y **ejecución en el contexto de trigger correcto**.
+
+---
+
+## 3. Estándares de código (FirstChair / Salesforce best practices)
+
+- **Un solo trigger por objeto** y sin lógica adentro: el trigger delega en una clase **handler** (`OrderTriggerHandler`, etc.).
+- **Bulkificado siempre:** nada de SOQL ni DML dentro de loops. Trabajar con `Set<Id>`, `Map<Id, SObject>` y listas.
+- Usar el **contexto de trigger correcto:** before para modificar campos del mismo registro (sin DML), after para registros relacionados o cuando se necesita el Id.
+- Detectar **cambios reales de campos** comparando `Trigger.new` con `Trigger.oldMap` para no reprocesar.
+- Evitar recursión cuando corresponda.
+- **Tests:** una `TestDataFactory` reutilizable, `@TestSetup`, `Test.startTest()/stopTest()`, **asserts con mensaje**, casos positivos, negativos y bulk (200 registros).
+- Comentarios claros (ApexDoc en clases y métodos públicos). Nombres descriptivos.
+
+---
+
+## 4. Estado actual del IC (todo terminado — NO modificar sin preguntar)
+
+Automatizaciones y reglas relevantes para los DEV:
+
+| Componente | Tipo | Qué hace |
+|---|---|---|
+| `Block_ClosedWon_Without_Approved_Quote` | Validation Rule (Opportunity) | Req #30: no deja pasar a Closed Won si la Primary Quote no está Approved. Aplica solo al perfil Direct Sales. |
+| `Auto_Create_Order_On_Closed_Won` | Record-Triggered Flow (Opportunity, after save) | Req #31: al pasar a Closed Won, marca la Primary Quote aprobada como `SBQQ__Ordered__c = true`. CPQ crea la **Order + Order Products** en estado Draft. |
+| `Auto_Contract_Order_On_Activation` | Record-Triggered Flow (Order, after save) | Req #31: cuando una Order **pasa** a `Status = Activated`, la marca `SBQQ__Contracted__c = true`. CPQ crea **Contract + Subscriptions + Assets** (proceso asíncrono, tarda unos segundos). |
+| Approval Process de Quote | Approval Process | Req #24–26: aprobaciones según la tabla Quote Approval. La Quote queda bloqueada tras el submit. |
+
+**Cadena completa del #31:**
+`Opportunity → Closed Won` → (Flow 1) Quote Ordered → CPQ crea Order Draft → **(DEV #2) Order Activated** → (Flow 2) Order Contracted → CPQ crea Contract + Subscription + Asset.
+
+El único eslabón que falta es el **DEV #2**: hoy la Order hay que activarla a mano.
+
+---
+
+## 5. Cosas que aprendimos del org (importante para testear)
+
+- **Subscription vs Asset:** CPQ genera **Subscription** solo para productos con `SBQQ__SubscriptionPricing__c` completo (Fixed Price / Percent Of Total). Los productos sin ese campo generan **Asset**. **Si no hay ninguna Subscription, CPQ no crea Contract.** Para probar Contracts usar un producto de suscripción (por ejemplo "Monthly Named Users", Fixed Price) y no "RFID Key Card" (que no es de suscripción).
+- **Calculador asíncrono de CPQ:** después de crear o editar Quote Lines, CPQ recalcula precios en un Queueable. Si se marca la Quote como Ordered antes de que termine, falla con "Order Products must have a Unit Price". Hay que esperar unos segundos.
+- **Contracting es asíncrono:** al marcar la Order como Contracted corre `QueueableContractOrdersClient`. El Contract aparece unos segundos después. Tenerlo en cuenta en tests y demos.
+- El **Contract nace en `Status = Draft`**. Nadie lo activa automáticamente todavía (relevante para el DEV #3).
+- La Order generada por CPQ ya nace con `SBQQ__PriceCalcStatus__c = 'Not Needed'` (visto en pruebas).
+- Validation rule nativa de CPQ `Cannot_Contract_New_Order`: no se puede contratar una Order que no esté activada.
+- Los logs de Apex del paquete CPQ están ocultos (paquete protegido): se ven SOQL/DML, no su lógica interna.
+- El registro de Quote aprobado queda bloqueado por el Approval Process. La API permite editar, pero el Quote Line Editor no.
+
+**Datos de prueba existentes:** Opportunity "Test Opportunity" (Account: Burlington Textiles Corp of America), Quote Q-00056 (Primary). Las últimas pruebas generaron Order 00000119, Contract 00000107 y SUB-0000010.
+
+---
+
+## 6. Requirements DEV (textuales + desglose)
+
+Orden propuesto: **#2 → #1 → #4 → #3 → #5**.
+
+### DEV #2 — Activación automática de la Order  ← EMPEZAR ACÁ
+> "As part of the Provisioning Team, I want the ability to automatically activate an Order record whenever it is created and the Price Calculation Status on the Order is updated to either 'Completed' or 'Not Needed'."
+
+- **Qué pide:** cuando se crea una Order y su `SBQQ__PriceCalcStatus__c` es o pasa a ser "Completed" o "Not Needed", poner `Status = 'Activated'`.
+- **Piezas:** `OrderTrigger` + `OrderTriggerHandler` + test class.
+- **A investigar antes de diseñar (explicámelo):**
+  - En qué orden CPQ inserta la Order y los Order Products. Salesforce no deja activar una Order sin productos. Si la Order ya nace con "Not Needed", activarla en el insert puede fallar porque todavía no tiene items. Hay que ver el orden de eventos y decidir el contexto correcto (after update, Queueable, etc.).
+  - Cubrir insert y update. Solo reaccionar cuando el valor **cambia** a Completed/Not Needed.
+- **Encaja con:** Flow 2 del IC. Una vez activada, el Flow la marca Contracted.
+
+### DEV #1 — Vencimiento automático de la Quote
+> "Whenever a Quote record is approved, the Quote Expiration Date should be set to 30 days from the date in which it was approved. If a Quote reaches the Quote Expiration Date and the related Opportunity is still not 'Closed Won,' then the Quote approvals should be recalled."
+
+- **Piezas:** trigger en `SBQQ__Quote__c` (al pasar `SBQQ__Status__c` a Approved → `SBQQ__ExpirationDate__c = hoy + 30`) + **Scheduled Apex / Batch** diario (Quotes vencidas cuya Opportunity no esté Closed Won → "recall") + tests.
+- **Ojo:** CPQ ya setea una fecha de vencimiento por defecto (Default Quote Validity = 30 días desde la creación). Esto la tiene que pisar al aprobar.
+- **Decisión de diseño a charlar:** una aprobación ya terminada no se puede "recallear" con la API estándar (el recall aplica a aprobaciones pendientes). Hay que definir qué significa "recall" acá: por ejemplo, desbloquear el registro (`Approval.unlock`) y volver el status a Draft/Recalled. Consultarlo con el mentor si hace falta.
+
+### DEV #4 — Contador de Subscriptions activas en el Contract
+> "As a Sales User, I need a field on the Contract that quickly identifies how many active Subscriptions are currently related to the Contract."
+
+- **Piezas:** campo número nuevo en Contract + trigger en `SBQQ__Subscription__c` (insert, update, delete, undelete) + tests.
+- `SBQQ__Subscription__c.SBQQ__Contract__c` es **lookup**, no master-detail, así que no se puede usar un roll-up summary nativo (explicámelo).
+- **Definir "activa":** por ejemplo, fechas vigentes (start ≤ hoy ≤ end) y sin `SBQQ__TerminatedDate__c`. Documentar el supuesto.
+
+### DEV #3 — Renewal Opportunity automática
+> "As a Sales User, I would like a Renewal Opportunity to automatically be generated when a Contract is activated so that I can accurately forecast future sales. In addition, 30 days before the end of a Contract, I would like the Renewal Opportunity to be updated and a Renewal Quote generated so that my team can start preparing for the renewal sale. When this happens, the Owner of the Quote should have an email notification sent to them indicating that a Renewal Quote has been created, and the email should include a link to the Quote."
+
+- **Piezas:** trigger en Contract (al pasar a Activated) + **Scheduled Apex** (contratos que vencen en 30 días) + envío de email con link a la Quote + tests.
+- **A investigar:** CPQ tiene campos nativos en Contract, `SBQQ__RenewalForecast__c` (genera la Renewal Opportunity) y `SBQQ__RenewalQuoted__c` (genera la Renewal Quote). Probablemente la solución correcta sea **activar esos flags** en lugar de crear los registros a mano. Verificarlo en el org.
+- **Pendiente:** el Contract nace en Draft. Definir cómo se activa en la demo (manual u otra automatización).
+- Relacionado con la demo: los Contract Change Use Cases (Amend a los 6 y 9 meses) tienen que verse reflejados en la Renewal Opportunity.
+
+### DEV #5 — Barra de progreso en la Quote
+> "As a Sales User, I would like to be able to see a User-friendly UI on the Quote record that shows my current progress in the Quoting process. Specifically, I would like the following tasks to either have a green checkmark or red 'X': Quote Lines Added, Quote Approved, Quote Document Created, Opportunity Closed Won, Quote Ordered."
+
+- **Piezas:** Apex controller (`@AuraEnabled`) + **Lightning Web Component** en la record page de la Quote + tests del controller.
+- **Posibles fuentes de cada paso** (a validar): Quote Lines → `SBQQ__LineItemCount__c > 0`; Approved → `SBQQ__Status__c = 'Approved'`; Document → existen registros `SBQQ__QuoteDocument__c`; Closed Won → Opportunity `IsWon`; Ordered → `SBQQ__Ordered__c`.
+
+---
+
+## 7. Flujo de trabajo con Salesforce CLI
+
+```bash
+sf org login web --alias smartbytes          # conectar el org (una vez)
+sf config set target-org smartbytes           # dejarlo como org por defecto
+sf project retrieve start --metadata ApexClass ApexTrigger   # traer código existente
+sf project deploy start --source-dir force-app               # subir cambios
+sf apex run test --code-coverage --result-format human --wait 10   # correr tests + cobertura
+sf data query --query "SELECT Id, Status FROM Order LIMIT 5"       # consultar datos
+```
+
+Usar **git** desde el inicio, con un commit por avance significativo, para tener historial para el Code Review.
