@@ -12,7 +12,7 @@ Reglas:
 
 - **Respondé siempre en español (rioplatense está bien).** El código, los nombres de clases/métodos y los comentarios del código van en inglés, como es estándar.
 - **Modo aprendizaje:** antes de escribir código, explicame el diseño en palabras simples: qué vamos a construir, por qué así y qué alternativas había. Después construilo en pasos chicos, explicando cada bloque.
-- **Hacéme participar.** Cuando haya partes buenas para practicar (por ejemplo, un método del handler o un test), proponeme escribirlas yo primero y después revisalas conmigo. No me des todo resuelto si puedo intentarlo.
+- **El código lo escribís vos, yo lo tengo que entender.** No me pidas que escriba partes. Escribí todo, pero explicame cada bloque para que pueda defenderlo en el Code Review.
 - **Explicá el "por qué" de Salesforce:** contexto de trigger (before/after), bulkificación, governor limits, por qué una query va afuera del loop, etc. Asumí que sé lo básico de Apex pero que nunca armé un proyecto real completo.
 - **No avances de un requirement al siguiente sin mi confirmación.**
 - **No toques configuración declarativa (IC) sin preguntarme.** Ya está terminada y probada (ver sección 4).
@@ -46,6 +46,59 @@ Reglas:
 - Evitar recursión cuando corresponda.
 - **Tests:** una `TestDataFactory` reutilizable, `@TestSetup`, `Test.startTest()/stopTest()`, **asserts con mensaje**, casos positivos, negativos y bulk (200 registros).
 - Comentarios claros (ApexDoc en clases y métodos públicos). Nombres descriptivos.
+
+### 3.1 Nivel del training — usá SOLO lo que vi en el curso
+
+El código tiene que parecer escrito por alguien que acaba de terminar este training, no por un senior. Esta sección resume el "Salesforce Developer Training Recap" de FirstChair, módulo por módulo.
+
+**Módulo 1 — Apex Basics**
+- Tipado fuerte: toda variable con tipo. Primitivos más usados: String, Integer, Decimal, Boolean, Date, Datetime, Id. Tener en cuenta el Field Type del campo al leer/escribir.
+- Colecciones: List (ordenada, por índice), Set (sin orden ni duplicados), Map (clave-valor, clave única). Nombres en plural o con el tipo: `orderList`, `orderIdSet`, `orderByIdMap` (patrón `valorPorClaveMap`, como `monthNameByNumberMap`).
+- Condicionales: if / else if / else, switch, ternario. Espacio antes y después de los paréntesis. Nada de condicionales de una sola línea (siempre con llaves).
+- Loops: for tradicional, for mejorado (el más usado), for con SOQL, while, do-while.
+- Clases: la mayoría de los métodos `static`. Clases en UpperCamelCase; variables y métodos en camelCase; constantes `static final` en UPPER_CASE.
+- sObjects: instancia nueva para crear registros, campos con notación de punto y API Name.
+- DML: insert, update, upsert, delete, undelete, siempre sobre listas. El Id es el único campo del sistema que se completa solo después de un insert.
+- SOQL: WHERE para traer solo lo necesario; si la query pasa ~100 caracteres, cada cláusula en su propia línea; relaciones lookup para datos del padre y subqueries para hijos.
+
+**Módulo 2 — Triggers**
+- Un solo trigger por objeto, llamado `ObjetoTrigger` (ej. `OrderTrigger`).
+- Sin lógica de negocio: usa las variables de contexto (`Trigger.isBefore`, `Trigger.isUpdate`, etc.) y llama a métodos `public static` del handler, pasando `Trigger.new` y `Trigger.oldMap`. Ej.: `OrderTriggerHandler.beforeUpdate(Trigger.new, Trigger.oldMap)`.
+- Handler: `public with sharing class ObjetoTriggerHandler`, con métodos de entrada por contexto (`beforeInsert`, `afterUpdate`, etc.) que llaman a métodos `private static` con la lógica.
+- **Before** = cambios en los MISMOS registros, sin DML (el Id no existe todavía en before insert). **After** = cambios en registros RELACIONADOS, con DML explícito.
+
+**Governor Limits (multitenant)**
+- Nunca SOQL ni DML dentro de un for loop.
+- Usar `Trigger.oldMap` para comparar nuevo vs viejo y correr la lógica solo si el campo cambió.
+- Poner un condicional antes de la SOQL para que corra solo cuando hace falta (salvo en insert).
+- WHERE para reducir el volumen de datos.
+- No hacer DML sobre el mismo objeto más de una vez en el mismo contexto de trigger.
+- Una excepción no atrapada hace rollback de toda la transacción.
+
+**Módulo 3 — Test Classes**
+- Nombre: `ClaseTest` (ej. `OrderTriggerHandlerTest`), anotada `@IsTest`, con métodos `@isTest` nombrados `metodoTest`.
+- `@testSetup` para los datos comunes de la clase.
+- Cada método de test corre con su propia base de datos (se hace rollback al terminar) y sus propios Governor Limits.
+- Cobertura mínima para deployar: 75%. **Para el Final Assignment: 85%.**
+- Manejo de excepciones con try / catch / finally, sin fallar en silencio. Las Limit Exceptions no se pueden atrapar.
+
+**Módulo 4 — Asynchronous Apex**
+- **Future:** lógica async simple (callouts, límites extra, Mixed DML). Solo recibe primitivos o colecciones de primitivos; no devuelve Id de AsyncApexJob.
+- **Queueable:** cuando hay que encadenar jobs o pasar sObjects. `execute()` obligatorio. Bloquear el chaining en tests con `!Test.isRunningTest()`.
+- **Batch:** gran volumen de registros. En tests, `execute()` corre una sola vez.
+- **Scheduled:** implementa `Schedulable`; delegar la lógica en otra clase, no ponerla en `execute()`.
+
+**Final Assignment (Módulo 5)**
+- Mantener actualizado el **Build Tracker**: qué Test Class cubre qué clase/trigger, fecha de la última corrida y % de cobertura. Al terminar cada requirement, dame esos datos listos para cargar.
+
+**Extras que NO están en el curso pero usamos igual (explicámelos cuando aparezcan):**
+- `Test.startTest()` / `Test.stopTest()`: necesarios para que los Queueable/Batch se ejecuten dentro del test y para medir límites por separado.
+- `System.assertEquals` con mensaje, y casos bulk de 200 registros.
+- Una `TestDataFactory` compartida, para no repetir la creación de datos (DRY).
+- `Error_Log__c` + clase utilitaria de logging (decisión de diseño del DEV #2).
+- Comentarios ApexDoc en clases y métodos públicos.
+
+**Qué evitar (fuera del nivel del curso):** frameworks de trigger con interfaces o clases abstractas, fflib, inyección de dependencias, genéricos, Dynamic Apex / Schema describe, Custom Metadata para configuración, `Database.Stateful`, clases wrapper complejas y atajos "ingeniosos" en una sola línea (por ejemplo `new Map<Id, Order>(list).keySet()`: preferí un for simple). Si algo fuera del curso es realmente necesario, **primero explicame por qué y ofreceme la alternativa más simple**; decido yo.
 
 ---
 
