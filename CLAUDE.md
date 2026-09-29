@@ -112,11 +112,12 @@ Automatizaciones y reglas relevantes para los DEV:
 | `Auto_Create_Order_On_Closed_Won` | Record-Triggered Flow (Opportunity, after save) | Req #31: al pasar a Closed Won, marca la Primary Quote aprobada como `SBQQ__Ordered__c = true`. CPQ crea la **Order + Order Products** en estado Draft. |
 | `Auto_Contract_Order_On_Activation` | Record-Triggered Flow (Order, after save) | Req #31: cuando una Order **pasa** a `Status = Activated`, la marca `SBQQ__Contracted__c = true`. CPQ crea **Contract + Subscriptions + Assets** (proceso asíncrono, tarda unos segundos). |
 | Approval Process de Quote | Approval Process | Req #24–26: aprobaciones según la tabla Quote Approval. La Quote queda bloqueada tras el submit. |
+| `OrderTrigger` + `OrderTriggerHandler` + `OrderActivationQueueable` | Apex (DEV #2, **hecho**) | Activa la Order cuando su `SBQQ__PriceCalcStatus__c` es o pasa a `Completed`/`Not Needed`. Update: en before update, sin DML. Insert: con un Queueable. Errores en `Error_Log__c` (vía `ErrorLogUtil`). Tests: 14/14, cobertura 100%. |
 
-**Cadena completa del #31:**
-`Opportunity → Closed Won` → (Flow 1) Quote Ordered → CPQ crea Order Draft → **(DEV #2) Order Activated** → (Flow 2) Order Contracted → CPQ crea Contract + Subscription + Asset.
+**Cadena completa del #31 (100% automática desde el DEV #2):**
+`Opportunity → Closed Won` → (Flow 1) Quote Ordered → CPQ crea Order Draft (`Not Started` → `Queued`) → calculador de CPQ (`OrderPriceCalculatorService`) pasa la Order a `Not Needed` → **(DEV #2, before update) Order Activated** → (Flow 2) Order Contracted → CPQ crea Contract + Subscription + Asset.
 
-El único eslabón que falta es el **DEV #2**: hoy la Order hay que activarla a mano.
+Verificado end-to-end el 29/09/2026: Opportunity "DEV2 E2E Test - Order Activation", Q-00057 → Order 00000120 activada ~3 s después de crearse → Contract 00000108 + SUB-0000011, sin errores.
 
 ---
 
@@ -126,12 +127,13 @@ El único eslabón que falta es el **DEV #2**: hoy la Order hay que activarla a 
 - **Calculador asíncrono de CPQ:** después de crear o editar Quote Lines, CPQ recalcula precios en un Queueable. Si se marca la Quote como Ordered antes de que termine, falla con "Order Products must have a Unit Price". Hay que esperar unos segundos.
 - **Contracting es asíncrono:** al marcar la Order como Contracted corre `QueueableContractOrdersClient`. El Contract aparece unos segundos después. Tenerlo en cuenta en tests y demos.
 - El **Contract nace en `Status = Draft`**. Nadie lo activa automáticamente todavía (relevante para el DEV #3).
-- La Order generada por CPQ ya nace con `SBQQ__PriceCalcStatus__c = 'Not Needed'` (visto en pruebas).
+- **Corregido con debug log (29/09/2026):** la Order generada por CPQ **no** nace con `Not Needed`. Nace con `SBQQ__PriceCalcStatus__c = 'Not Started'` (default del campo), CPQ la pasa a `Queued` en la misma transacción, y su Queueable `OrderPriceCalculatorService` la pasa a `Not Needed` unos segundos después. `Not Needed` era el estado final, no el inicial.
+- Los productos (OrderItems) se insertan en la misma transacción que la Order, inmediatamente después de ella.
 - Validation rule nativa de CPQ `Cannot_Contract_New_Order`: no se puede contratar una Order que no esté activada.
 - Los logs de Apex del paquete CPQ están ocultos (paquete protegido): se ven SOQL/DML, no su lógica interna.
 - El registro de Quote aprobado queda bloqueado por el Approval Process. La API permite editar, pero el Quote Line Editor no.
 
-**Datos de prueba existentes:** Opportunity "Test Opportunity" (Account: Burlington Textiles Corp of America), Quote Q-00056 (Primary). Las últimas pruebas generaron Order 00000119, Contract 00000107 y SUB-0000010.
+**Datos de prueba existentes:** Opportunity "Test Opportunity" (Account: Burlington Textiles Corp of America), Quote Q-00056 (Primary). Las últimas pruebas generaron Order 00000119, Contract 00000107 y SUB-0000010. Prueba end-to-end del DEV #2: Opportunity "DEV2 E2E Test - Order Activation" (006fj00000N7Le6AAF), Q-00057 → Order 00000120, Contract 00000108, SUB-0000011.
 
 ---
 
