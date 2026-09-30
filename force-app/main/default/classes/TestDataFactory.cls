@@ -19,6 +19,22 @@ public class TestDataFactory {
     }
 
     /**
+     * @description Crea e inserta una Opportunity en la etapa indicada.
+     * @param accountId Account de la Opportunity
+     * @param stageName Etapa (por ejemplo 'Prospecting' o 'Closed Won')
+     * @return La Opportunity insertada
+     */
+    public static Opportunity createOpportunity( Id accountId, String stageName ) {
+        Opportunity opp = new Opportunity();
+        opp.Name = 'Test Opportunity ' + stageName;
+        opp.AccountId = accountId;
+        opp.StageName = stageName;
+        opp.CloseDate = Date.today().addDays( 30 );
+        insert opp;
+        return opp;
+    }
+
+    /**
      * @description Crea un Product2 y su precio en el Pricebook estándar.
      *              Test.getStandardPricebookId() nos da el Id del Pricebook estándar
      *              dentro del test, sin necesidad de ver los datos reales del org.

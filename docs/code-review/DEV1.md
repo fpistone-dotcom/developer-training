@@ -1,6 +1,6 @@
 # DEV #1 — Vencimiento automático de la Quote · Resumen para el Code Review
 
-> **Estado:** Parte A terminada (30/09/2026). Parte B diseñada, pendiente de la decisión sobre el "recall".
+> **Estado:** Parte A y Parte B terminadas, deployadas y probadas en el org (30/09/2026). Job nocturno programado.
 
 ## 1. Requirement
 
@@ -10,19 +10,24 @@
 |---|---|---|
 | (A) "whenever a Quote record is approved" | `SBQQ__Status__c` **pasa a** `Approved` (o la Quote nace aprobada) | `QuoteTriggerHandler.beforeUpdate` / `beforeInsert` |
 | (B) "30 days from the date in which it was approved" | `SBQQ__ExpirationDate__c = hoy + 30`, pisando el default de CPQ | `setExpirationDate` |
-| (C) "reaches the Quote Expiration Date ... not Closed Won" | Chequeo diario de Quotes vencidas | **Parte B** (Batch + Scheduler) — pendiente |
-| (D) "approvals should be recalled" | A definir (ver sección 8) | **Parte B** — pendiente |
+| (C) "reaches the Quote Expiration Date" | `SBQQ__ExpirationDate__c <= TODAY`, chequeado todas las noches | `QuoteExpirationBatch.start` + `QuoteExpirationScheduler` |
+| (D) "the related Opportunity is still not 'Closed Won'" | Con Opportunity y `IsWon = false` | `QuoteExpirationBatch.start` |
+| (E) "the Quote approvals should be recalled" | Retirar la aprobación **pendiente** (botón "Recall" = acción `'Removed'`) | `QuoteExpirationBatch.recallPendingApprovals` |
 
 ---
 
-## 2. Componentes (Parte A)
+## 2. Componentes
 
-| Componente | Tipo | Rol |
-|---|---|---|
-| `QuoteTrigger` | Apex Trigger | Único trigger propio de `SBQQ__Quote__c`, sin lógica. `before insert` y `before update`. |
-| `QuoteTriggerHandler` | Apex Class | Métodos de entrada por contexto + lógica `private static`. |
-| `TestDataFactory.buildQuotes` | Test utility | Arma Quotes con Status y vencimiento indicados. |
-| `QuoteTriggerHandlerTest` | Test Class | 8 tests. |
+| Componente | Tipo | Parte | Rol |
+|---|---|---|---|
+| `QuoteTrigger` | Apex Trigger | A | Único trigger propio de `SBQQ__Quote__c`, sin lógica. `before insert` y `before update`. |
+| `QuoteTriggerHandler` | Apex Class | A | Métodos de entrada por contexto + lógica `private static`. |
+| `QuoteExpirationScheduler` | Apex Class (Schedulable) | B | "Despertador" nocturno: solo lanza el Batch. |
+| `QuoteExpirationBatch` | Apex Class (Batchable) | B | Busca las Quotes vencidas con aprobación pendiente y les hace recall. |
+| `TestDataFactory.buildQuotes`, `createOpportunity` | Test utility | A y B | Datos de prueba compartidos. |
+| `QuoteTriggerHandlerTest` | Test Class | A | 8 tests. |
+| `QuoteExpirationBatchTest` | Test Class | B | 8 tests, con aprobaciones pendientes reales. |
+| `QuoteExpirationSchedulerTest` | Test Class | B | 1 test. |
 
 En el org también existen `SBQQ.QuoteBefore` y `SBQQ.QuoteAfter`, del paquete CPQ. No son nuestros y no se pueden modificar.
 
@@ -94,37 +99,109 @@ Es el mismo costo para 1 o para 200 registros.
 
 ---
 
-## 8. Parte B — Diseño (pendiente de construir)
+## 8. Parte B — Recall de aprobaciones vencidas
 
-**Qué hace:** todos los días busca Quotes aprobadas que ya vencieron y cuya Opportunity no está Closed Won, y les hace el "recall".
+### 8.1 Qué significa "recall" (definido con el mentor)
 
-- `QuoteExpirationScheduler` (`Schedulable`): su `execute()` solo llama a `Database.executeBatch( new QuoteExpirationBatch() )`. Regla del curso: no poner lógica en el Scheduled.
-- `QuoteExpirationBatch` (`Database.Batchable<SObject>`):
-  - `start`: `SBQQ__Status__c = 'Approved'` AND `SBQQ__ExpirationDate__c <= TODAY` AND `SBQQ__Opportunity2__r.IsWon = false`.
-  - `execute`: el "recall" (a definir) con `Database.update( lista, false )` + `ErrorLogUtil`.
-  - `finish`: vacío.
-- **Por qué Batch y no solo Scheduled:** cada chunk de 200 tiene sus propios límites, así que escala sin depender del volumen.
-- **Supuesto:** las Quotes sin Opportunity quedan afuera. Con `SBQQ__Opportunity2__c` en null, `IsWon = false` no matchea en SOQL.
-- **Abierto: qué es el "recall".** Una aprobación terminada no se puede recallear con la API (solo las pendientes). La opción "desbloquear + volver a Draft" necesita *Enable record locking and unlocking in Apex*, que hoy está desactivado. Se decide con el mentor.
+Retirar una aprobación **pendiente**, igual que el botón **"Recall"** de la UI. Las Quotes ya aprobadas **no se tocan** (supuesto documentado): una aprobación terminada no tiene nada que retirar, y "desbloquear + volver a Draft" necesitaría *Enable record locking and unlocking in Apex*, que está desactivado.
+
+En Apex, las acciones sobre una aprobación pendiente se hacen con `Approval.ProcessWorkitemRequest` (Approve, Reject o **Removed**). **`'Removed'` es el Recall**: Salesforce ejecuta la Recall Action del proceso (`Set_Quote_Status_Draft`) y desbloquea la Quote. No hace falta `Approval.unlock`.
+
+**Qué resuelve en la práctica:** una Quote In Review tiene todavía el vencimiento por defecto de CPQ (creación + 30), porque el nuestro se pone recién al aprobar. Si vence sin que nadie la apruebe ni gane la Opportunity, la aprobación queda colgada en "Items to Approve". El recall la retira y la Quote vuelve a Draft, editable, para que el vendedor la actualice y la reenvíe.
+
+### 8.2 Por qué Batch + Scheduler y no un trigger
+
+Un trigger corre solo cuando **alguien guarda** un registro. "La Quote venció" no es un guardado: es el calendario que avanza. Hace falta algo que corra **por tiempo**.
+
+- **`QuoteExpirationScheduler` (Schedulable):** el "despertador". Corre todas las noches a la 1:00 (`'0 0 1 * * ?'`) y solo lanza el Batch. La regla del curso es no poner lógica en el Scheduled.
+- **`QuoteExpirationBatch` (Batchable):** hace el trabajo en tandas de 200 registros, **cada una con sus propios governor limits**, así que escala con cualquier volumen. Si todo corriera en el Scheduler, sería una sola transacción con un solo juego de límites.
+
+### 8.3 Cómo funciona
+
+1. **`start`:** `SBQQ__Status__c = 'In Review'` AND `SBQQ__ExpirationDate__c <= TODAY` AND `SBQQ__Opportunity2__c != null` AND `SBQQ__Opportunity2__r.IsWon = false`. Devuelve un `QueryLocator`.
+2. **`execute`** (por tanda) → `recallPendingApprovals`:
+   - **Una** query a `ProcessInstanceWorkitem` con los Ids de la tanda, afuera de cualquier loop.
+   - Un request `'Removed'` por work item, con un comentario que queda en el Approval History.
+   - Una lista paralela con la Quote de cada request.
+   - **Un** `Approval.process( lista, false )`: con `allOrNone = false`, si un recall falla los demás se hacen igual.
+   - Los resultados se recorren **por posición** (un resultado fallido no trae el Id). Los errores van a `ErrorLogUtil` con **un solo insert**.
+3. **`finish`:** vacío (la interfaz lo exige).
+4. **Cadena automática:** recall → Recall Action (Draft) → `QuoteTrigger`. El Status no pasa a Approved, así que no hace nada y no hay recursión.
+
+### 8.4 Decisiones y supuestos
+
+- **"Reaches the Expiration Date" = `<= TODAY`:** el recall se hace el mismo día del vencimiento (a la 1:00).
+- **Quotes sin Opportunity:** quedan afuera (supuesto documentado).
+- **Quotes "In Review" sin aprobación pendiente** (Status cambiado a mano): el Batch las encuentra pero no hay work item, así que no las toca y no genera errores.
+- **El job corre como el usuario que lo programó** (admin). Retirar aprobaciones enviadas por otros requiere ser admin o el que la envió.
+- **`with sharing`:** como el job corre como admin, ve todas las Quotes.
+- **Genérico `<SObject>`:** lo exige la interfaz `Database.Batchable`. No es una elección de diseño.
+- **`Database.Stateful` no se usa:** los errores se guardan en cada tanda, así que no hace falta mantener estado entre tandas.
+
+### 8.5 Bulkificación y límites
+
+| Contexto (una tanda de 200) | SOQL | DML / Approval |
+|---|---|---|
+| start | 1 (QueryLocator) | 0 |
+| execute | 1 (work items) | 1 `Approval.process` (+1 insert de logs si hubo errores) |
+
+### 8.6 Edge cases cubiertos (todos con test)
+
+Las aprobaciones pendientes de los tests son **reales**: se hace Submit con `Approval.process` y `Quote_Approval_V2` corre en el test (Net 60 → pendiente de Finance).
+
+| Caso | Resultado esperado | Test |
+|---|---|---|
+| Vencida ayer + Opportunity abierta | Draft, sin work item, sin Error Logs | `recallExpiredQuoteTest` |
+| Vence **hoy** (borde) | Draft | `recallQuoteExpiringTodayTest` |
+| 200 vencidas | Las 200 en Draft | `recallBulkTest` |
+| Vence mañana | In Review, sigue pendiente | `notRecalledWhenNotExpiredTest` |
+| Opportunity Closed Won | In Review | `notRecalledWhenOpportunityWonTest` |
+| Ya Approved y vencida | Approved (no se toca) | `notRecalledWhenAlreadyApprovedTest` |
+| Sin Opportunity | In Review | `notRecalledWithoutOpportunityTest` |
+| "In Review" sin aprobación pendiente | In Review, sin error | `notRecalledWithoutPendingApprovalTest` |
+| El Scheduler se programa y lanza el Batch | `CronTrigger` con el cron + 1 `AsyncApexJob` | `scheduleNightlyJobTest` |
+
+### 8.7 Limitación conocida
+
+Las 2 líneas que arman el Error Log cuando un recall **falla** (`QuoteExpirationBatch`, líneas 112-113) no están cubiertas: un recall real no se puede hacer fallar con datos normales de test. Cobertura de la clase: 93%.
 
 ---
 
-## 9. Prueba en el org (30/09/2026)
+## 9. Pruebas en el org (30/09/2026)
 
-Opportunity "IC Test - Auto Approval" → **Q-00061** creada con Net 30, sin descuento y vencimiento forzado a 05/10/2026 → Submit → `Auto_Approval` la aprueba en el momento → **Status Approved, vencimiento 30/10/2026** (hoy + 30). Se volvió a consultar después del commit y la fecha seguía igual. El `SBQQ.QuoteBefore` de CPQ no la pisa. Sin Error Logs.
+**Parte A:** Opportunity "IC Test - Auto Approval" → **Q-00061** creada con Net 30, sin descuento y vencimiento forzado a 05/10/2026 → Submit → `Auto_Approval` la aprueba en el momento → **Status Approved, vencimiento 30/10/2026** (hoy + 30). Se volvió a consultar después del commit y la fecha seguía igual. El `SBQQ.QuoteBefore` de CPQ no la pisa. Sin Error Logs.
 
-**Cómo se prueba en la UI (demo):**
+**Parte B:** **Q-00079** (Net 60, vencimiento 29/09, misma Opportunity abierta) → Submit → In Review → `Database.executeBatch( new QuoteExpirationBatch() )` → job `Completed`, 0 errores → **Q-00079 en Draft**, con el paso "Removed" y el comentario automático en el Approval History. Q-00060 (In Review, vence el 30/10) no se tocó. Sin Error Logs.
+
+**Job programado:** "Quote Expiration Recall - Nightly", `0 0 1 * * ?`, estado WAITING, primer disparo 01/10/2026 1:00 (America/Los_Angeles).
+
+### Cómo se prueba en la UI (demo)
+
+**Parte A — vencimiento al aprobar:**
 1. Abrir una Quote en Draft (Net 30, sin descuento) y anotar su Expiration Date.
-2. **Submit for Approval**. Con `Auto_Approval` se aprueba sola; con los otros procesos, aprobarla desde el approver.
+2. **Submit for Approval**. Con `Auto_Approval` se aprueba sola; con `Quote_Approval_V2`, aprobarla desde el approver.
 3. Refrescar: Status **Approved** y Expiration Date = **hoy + 30**.
+
+**Parte B — recall de una Quote vencida:**
+1. Crear una Quote en una Opportunity abierta con **Payment Terms = Net 60** y editar **Expiration Date = ayer**.
+2. **Submit for Approval** → Status **In Review**, con el candado y la aprobación en "Items to Approve" del approver de Finance.
+3. Abrir la **Developer Console → Debug → Open Execute Anonymous Window** y ejecutar:
+   ```apex
+   Database.executeBatch( new QuoteExpirationBatch() );
+   ```
+   Es lo mismo que hace el job a la 1:00, sin esperar.
+4. Esperar unos segundos (se puede ver el job en **Setup → Apex Jobs**) y refrescar la Quote: Status **Draft**, sin candado, y en **Approval History** el paso **Recalled** con el comentario *"Recalled automatically: ..."*. La aprobación desaparece de "Items to Approve".
+5. Mostrar el job programado en **Setup → Scheduled Jobs** ("Quote Expiration Recall - Nightly").
 
 ---
 
 ## 10. Tests y Build Tracker
 
-**8/8 tests pasan. Cobertura del 100%.** Los 11 tests de `OrderTriggerHandlerTest` siguen pasando después del cambio en `TestDataFactory`.
+**Todos los tests locales pasan: 30/30** (Order 11, ErrorLogUtil 2, Parte A 8, Parte B 9). **Cobertura del org: 98%.**
 
 | Componente | Test Class | Última corrida | Cobertura |
 |---|---|---|---|
 | QuoteTrigger | QuoteTriggerHandlerTest | 30/09/2026 | 100% |
 | QuoteTriggerHandler | QuoteTriggerHandlerTest | 30/09/2026 | 100% |
+| QuoteExpirationBatch | QuoteExpirationBatchTest | 30/09/2026 | 93% |
+| QuoteExpirationScheduler | QuoteExpirationSchedulerTest | 30/09/2026 | 100% |
