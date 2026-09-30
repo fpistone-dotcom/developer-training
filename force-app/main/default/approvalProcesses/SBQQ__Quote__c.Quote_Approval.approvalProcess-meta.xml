@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ApprovalProcess xmlns="http://soap.sforce.com/2006/04/metadata">
+    <active>false</active>
+    <allowRecall>true</allowRecall>
+    <allowedSubmitters>
+        <type>owner</type>
+    </allowedSubmitters>
+    <approvalPageFields>
+        <field>Name</field>
+        <field>Owner</field>
+        <field>SBQQ__Account__c</field>
+        <field>SBQQ__NetAmount__c</field>
+        <field>SBQQ__CustomerDiscount__c</field>
+        <field>SBQQ__PaymentTerms__c</field>
+    </approvalPageFields>
+    <approvalStep>
+        <allowDelegate>false</allowDelegate>
+        <assignedApprover>
+            <approver>
+                <name>frandev@firstchair.com</name>
+                <type>user</type>
+            </approver>
+            <whenMultipleApprovers>FirstResponse</whenMultipleApprovers>
+        </assignedApprover>
+        <description>Motivo 1 (Payment Terms): si no es Net 30, aprueba Finance (mismo aprobador que Billing_Approval). Si es Net 30, pasa al paso siguiente.</description>
+        <entryCriteria>
+            <criteriaItems>
+                <field>SBQQ__Quote__c.SBQQ__PaymentTerms__c</field>
+                <operation>notEqual</operation>
+                <value>Net 30</value>
+            </criteriaItems>
+        </entryCriteria>
+        <ifCriteriaNotMet>GotoNextStep</ifCriteriaNotMet>
+        <label>Finance Approval</label>
+        <name>Finance_Approval</name>
+    </approvalStep>
+    <approvalStep>
+        <allowDelegate>false</allowDelegate>
+        <assignedApprover>
+            <approver>
+                <name>Approving_Manager__c</name>
+                <type>relatedUserField</type>
+            </approver>
+            <whenMultipleApprovers>FirstResponse</whenMultipleApprovers>
+        </assignedApprover>
+        <description>Motivo 2 (descuento): si el descuento es 15% o más, aprueba el Approving Manager. Si no, la Quote se aprueba: con menos de 15% el paso del Director (25% o más) tampoco aplicaría, y si se salteara el último paso sin que nadie haya aprobado, Salesforce rechaza la Quote.</description>
+        <entryCriteria>
+            <criteriaItems>
+                <field>SBQQ__Quote__c.SBQQ__CustomerDiscount__c</field>
+                <operation>greaterOrEqual</operation>
+                <value>15</value>
+            </criteriaItems>
+        </entryCriteria>
+        <ifCriteriaNotMet>GotoNextStep</ifCriteriaNotMet>
+        <label>Manager Approval</label>
+        <name>Manager_Approval</name>
+        <rejectBehavior>
+            <type>RejectRequest</type>
+        </rejectBehavior>
+    </approvalStep>
+    <approvalStep>
+        <allowDelegate>false</allowDelegate>
+        <assignedApprover>
+            <approver>
+                <name>Approving_Director__c</name>
+                <type>relatedUserField</type>
+            </approver>
+            <whenMultipleApprovers>FirstResponse</whenMultipleApprovers>
+        </assignedApprover>
+        <description>Motivo 2 (descuento alto): si el descuento es 25% o más, también aprueba el Approving Director. Si no, la Quote queda aprobada (en el último paso Salesforce no permite ifCriteriaNotMet; saltearlo después de que alguien aprobó termina el proceso con aprobación).</description>
+        <entryCriteria>
+            <criteriaItems>
+                <field>SBQQ__Quote__c.SBQQ__CustomerDiscount__c</field>
+                <operation>greaterOrEqual</operation>
+                <value>25</value>
+            </criteriaItems>
+        </entryCriteria>
+        <label>Director Approval</label>
+        <name>Director_Approval</name>
+        <rejectBehavior>
+            <type>RejectRequest</type>
+        </rejectBehavior>
+    </approvalStep>
+    <description>Único Approval Process de Quote. Entran todas las Quotes y recorren 3 pasos en fila: Finance (Payment Terms distinto de Net 30), Manager (descuento &gt;= 15%) y Director (descuento &gt;= 25%). Cada motivo requiere su aprobador; los pasos que no aplican se saltean y, si ninguno aplica, la Quote se aprueba sola. Reemplaza a Discount_Approval, Billing_Approval y Auto_Approval (desactivados, no borrados).</description>
+    <enableMobileDeviceAccess>false</enableMobileDeviceAccess>
+    <finalApprovalActions>
+        <action>
+            <name>Set_Quote_Status_Approved</name>
+            <type>FieldUpdate</type>
+        </action>
+        <action>
+            <name>Set_Quote_Template_Final</name>
+            <type>FieldUpdate</type>
+        </action>
+    </finalApprovalActions>
+    <finalApprovalRecordLock>true</finalApprovalRecordLock>
+    <finalRejectionActions>
+        <action>
+            <name>Set_Quote_Status_Denied</name>
+            <type>FieldUpdate</type>
+        </action>
+    </finalRejectionActions>
+    <finalRejectionRecordLock>false</finalRejectionRecordLock>
+    <initialSubmissionActions>
+        <action>
+            <name>Set_Quote_Status_In_Review</name>
+            <type>FieldUpdate</type>
+        </action>
+    </initialSubmissionActions>
+    <label>Quote Approval</label>
+    <processOrder>4</processOrder>
+    <recallActions>
+        <action>
+            <name>Set_Quote_Status_Draft</name>
+            <type>FieldUpdate</type>
+        </action>
+    </recallActions>
+    <recordEditability>AdminOnly</recordEditability>
+    <showApprovalHistory>false</showApprovalHistory>
+</ApprovalProcess>

@@ -30,7 +30,7 @@ En el org también existen `SBQQ.QuoteBefore` y `SBQQ.QuoteAfter`, del paquete C
 
 ## 3. Cómo se aprueba una Quote en el org
 
-Los 3 Approval Processes (`Discount_Approval`, `Billing_Approval`, `Auto_Approval`) tienen las mismas acciones:
+Los 2 Approval Processes activos (`Auto_Approval` y `Quote_Approval_V2`, con criterios de entrada opuestos) tienen las mismas acciones:
 
 | Momento | Field update | Status |
 |---|---|---|

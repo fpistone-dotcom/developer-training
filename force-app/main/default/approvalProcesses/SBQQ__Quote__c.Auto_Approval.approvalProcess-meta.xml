@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ApprovalProcess xmlns="http://soap.sforce.com/2006/04/metadata">
+    <active>true</active>
+    <allowRecall>true</allowRecall>
+    <allowedSubmitters>
+        <type>owner</type>
+    </allowedSubmitters>
+    <approvalPageFields>
+        <field>Name</field>
+        <field>Owner</field>
+        <field>SBQQ__CustomerDiscount__c</field>
+        <field>SBQQ__PaymentTerms__c</field>
+    </approvalPageFields>
+    <approvalStep>
+        <allowDelegate>false</allowDelegate>
+        <assignedApprover>
+            <approver>
+                <name>frandev@firstchair.com</name>
+                <type>user</type>
+            </approver>
+            <whenMultipleApprovers>FirstResponse</whenMultipleApprovers>
+        </assignedApprover>
+        <description>El criterio nunca se cumple (FALSE), así que Salesforce aplica ifCriteriaNotMet = ApproveRecord y la Quote se aprueba sola al hacer Submit. El aprobador es obligatorio en la metadata pero nunca recibe la solicitud.</description>
+        <entryCriteria>
+            <formula>FALSE</formula>
+        </entryCriteria>
+        <ifCriteriaNotMet>ApproveRecord</ifCriteriaNotMet>
+        <label>Auto Approve</label>
+        <name>Auto_Approve</name>
+    </approvalStep>
+    <description>Quotes que no entran en Discount_Approval (descuento &gt;= 15%) ni en Billing_Approval (Payment Terms distinto de Net 30): descuento menor a 15% o vacío y Payment Terms = Net 30. Se aprueban solas al hacer Submit, para que lleguen a Status = Approved y la validation del Req #30 las deje pasar a Closed Won.</description>
+    <enableMobileDeviceAccess>false</enableMobileDeviceAccess>
+    <entryCriteria>
+        <formula>AND(
+    ISPICKVAL( SBQQ__PaymentTerms__c, &quot;Net 30&quot; ),
+    OR(
+        ISBLANK( SBQQ__CustomerDiscount__c ),
+        SBQQ__CustomerDiscount__c &lt; 0.15
+    )
+)</formula>
+    </entryCriteria>
+    <finalApprovalActions>
+        <action>
+            <name>Set_Quote_Status_Approved</name>
+            <type>FieldUpdate</type>
+        </action>
+        <action>
+            <name>Set_Quote_Template_Final</name>
+            <type>FieldUpdate</type>
+        </action>
+    </finalApprovalActions>
+    <finalApprovalRecordLock>true</finalApprovalRecordLock>
+    <finalRejectionActions>
+        <action>
+            <name>Set_Quote_Status_Denied</name>
+            <type>FieldUpdate</type>
+        </action>
+    </finalRejectionActions>
+    <finalRejectionRecordLock>false</finalRejectionRecordLock>
+    <initialSubmissionActions>
+        <action>
+            <name>Set_Quote_Status_In_Review</name>
+            <type>FieldUpdate</type>
+        </action>
+    </initialSubmissionActions>
+    <label>Auto Approval</label>
+    <processOrder>3</processOrder>
+    <recallActions>
+        <action>
+            <name>Set_Quote_Status_Draft</name>
+            <type>FieldUpdate</type>
+        </action>
+    </recallActions>
+    <recordEditability>AdminOnly</recordEditability>
+    <showApprovalHistory>false</showApprovalHistory>
+</ApprovalProcess>
