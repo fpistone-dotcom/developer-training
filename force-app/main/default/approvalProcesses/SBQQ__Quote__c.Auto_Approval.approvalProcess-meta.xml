@@ -28,7 +28,7 @@
         <label>Auto Approve</label>
         <name>Auto_Approve</name>
     </approvalStep>
-    <description>Quotes que no entran en Discount_Approval (descuento &gt;= 15%) ni en Billing_Approval (Payment Terms distinto de Net 30): descuento menor a 15% o vacío y Payment Terms = Net 30. Se aprueban solas al hacer Submit, para que lleguen a Status = Approved y la validation del Req #30 las deje pasar a Closed Won.</description>
+    <description>Quotes que no necesitan ninguna aprobación: descuento menor a 15% o vacío y Payment Terms = Net 30. Se aprueban solas al hacer Submit, para que lleguen a Status = Approved y la validation del Req #30 las deje pasar a Closed Won. Su criterio de entrada es exactamente el opuesto al de Quote_Approval_V2 (que es NOT de esta fórmula): cada Quote entra en uno solo de los dos. Es un proceso aparte porque Salesforce solo auto-aprueba desde el primer paso.</description>
     <enableMobileDeviceAccess>false</enableMobileDeviceAccess>
     <entryCriteria>
         <formula>AND(
