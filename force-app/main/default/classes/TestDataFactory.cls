@@ -76,6 +76,28 @@ public class TestDataFactory {
     }
 
     /**
+     * @description Arma Quotes de CPQ con el Status y el vencimiento indicados. No las inserta.
+     *              El vencimiento se recibe como parámetro para poder distinguirlo del que
+     *              calcula nuestro trigger (hoy + 30), que coincide con el default de CPQ.
+     * @param accountId      Account de las Quotes
+     * @param numberOfQuotes Cantidad de Quotes a armar
+     * @param status         Valor de SBQQ__Status__c
+     * @param expirationDate Valor inicial de SBQQ__ExpirationDate__c
+     * @return Lista de Quotes sin insertar
+     */
+    public static List<SBQQ__Quote__c> buildQuotes( Id accountId, Integer numberOfQuotes, String status, Date expirationDate ) {
+        List<SBQQ__Quote__c> quoteList = new List<SBQQ__Quote__c>();
+        for ( Integer i = 0; i < numberOfQuotes; i++ ) {
+            SBQQ__Quote__c quote = new SBQQ__Quote__c();
+            quote.SBQQ__Account__c = accountId;
+            quote.SBQQ__Status__c = status;
+            quote.SBQQ__ExpirationDate__c = expirationDate;
+            quoteList.add( quote );
+        }
+        return quoteList;
+    }
+
+    /**
      * @description Arma un Order Product por cada Order. No los inserta.
      *              Las Orders ya tienen que estar insertadas (se necesita su Id).
      * @param orderList      Orders que van a recibir el producto
