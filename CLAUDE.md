@@ -197,6 +197,7 @@ Orden propuesto: **#2 → #1 → #4 → #3 → #5**.
 - **Piezas:** campo número nuevo en Contract + trigger en `SBQQ__Subscription__c` (insert, update, delete, undelete) + tests.
 - `SBQQ__Subscription__c.SBQQ__Contract__c` es **lookup**, no master-detail, así que no se puede usar un roll-up summary nativo (explicámelo).
 - **Definir "activa":** por ejemplo, fechas vigentes (start ≤ hoy ≤ end) y sin `SBQQ__TerminatedDate__c`. Documentar el supuesto.
+- **Decisiones (confirmadas por Francisco, 02/10/2026):** "activa" = inicio ≤ hoy, fin vacío o ≥ hoy, TerminatedDate vacío o > hoy, **sin mirar el estado del Contract** (activarlo es del DEV #3). Amendments: **opción C**, una por Subscription original con cantidad neta vigente > 0. Batch + Scheduler nocturno a las **2:00** (no coincidir con el DEV #1). Campo, layout y permission set autorizados. **Hecho:** ver `docs/code-review/DEV4.md`.
 
 ### DEV #3 — Renewal Opportunity automática
 > "As a Sales User, I would like a Renewal Opportunity to automatically be generated when a Contract is activated so that I can accurately forecast future sales. In addition, 30 days before the end of a Contract, I would like the Renewal Opportunity to be updated and a Renewal Quote generated so that my team can start preparing for the renewal sale. When this happens, the Owner of the Quote should have an email notification sent to them indicating that a Renewal Quote has been created, and the email should include a link to the Quote."

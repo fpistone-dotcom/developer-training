@@ -106,6 +106,56 @@ Contract de 12 meses (1/10/2026 → 30/09/2027) con dos productos de suscripció
 
 ⭐ = el punto donde los dos caminos usan **el mismo** método.
 
+### 3.3 La misma explicación, bien simple (para repasar)
+
+**Idea general.** El Contract tiene un campo, *Active Subscriptions*, que dice cuántas Subscriptions activas tiene. Ese número tiene que actualizarse en dos situaciones:
+1. **Cuando alguien toca una Subscription** (la crea, la edita, la borra o la recupera). De eso se encarga el **trigger**.
+2. **Cuando pasa el tiempo** y una Subscription vence o empieza sola, sin que nadie la toque. De eso se encarga el **job de la noche**.
+
+Los dos caminos usan **la misma función para contar** (⭐). Así la regla de "qué es activa" está escrita en un solo lugar.
+
+#### Camino 1: alguien toca una Subscription
+
+**Paso 1: alguien guarda una Subscription.** Salesforce ejecuta solo **`SubscriptionTrigger`**.
+- Un *trigger* es código que se ejecuta automáticamente cuando se guarda un registro. El nuestro no hace cuentas: se fija **qué acción pasó** y avisa al handler.
+- `Trigger.isInsert` / `isUpdate` / `isDelete` / `isUndelete` dicen si se creó, editó, borró o recuperó.
+- `Trigger.isAfter` indica que estamos **después** del guardado. Usamos "after" porque vamos a modificar **otro** registro (el Contract), y para contar necesitamos que el cambio ya esté guardado.
+- `Trigger.new` es la lista de Subscriptions **como quedaron**. `Trigger.old` / `Trigger.oldMap` son **como estaban antes**. En un delete solo existe `Trigger.old`.
+
+**Paso 2: averiguar qué Contracts hay que recalcular.** Lo hace **`SubscriptionTriggerHandler`** ("el que se encarga" del trigger).
+- Si fue crear, borrar o recuperar, usa **`getContractIds`**: recorre las Subscriptions y guarda el Id de su Contract en un **`Set`**. Un Set es una lista **sin repetidos**: si 3 Subscriptions son del mismo Contract, el Id queda una sola vez.
+- Si fue editar, usa **`getContractIdsWithRelevantChanges`**. Para cada Subscription llama a **`hasRelevantChange`** ("¿tuvo un cambio importante?"), que compara viejo contra nuevo en los campos que pueden cambiar el conteo: Contract, cantidad, fechas, terminación y Subscription original.
+  - Si solo cambió, por ejemplo, el precio, esa Subscription se **ignora**.
+  - Si **se movió de Contract**, guarda los dos: el viejo (pierde una) y el nuevo (gana una).
+
+**Paso 3 ⭐: contar.** Lo hace **`ActiveSubscriptionCounter.recountActiveSubscriptions`** ("recontar las Subscriptions activas"). No suma ni resta 1: **cuenta todo de nuevo**, así nunca se desfasa.
+- **3a.** `if ( contractIdSet.isEmpty() ) { return; }`: si no hay Contracts, sale sin gastar una consulta.
+- **3b.** **Una sola consulta (SOQL)** trae los Contracts con el número que tienen guardado y, en una **subquery** (`SBQQ__Subscriptions__r`), sus Subscriptions hijas. Nunca consultamos dentro de un `for`, porque el límite es de 100 consultas por transacción.
+- **3c.** Para cada Subscription, **`isInForceToday`** ("¿está en vigencia hoy?") revisa tres cosas: `hasStarted` (ya empezó), `hasNotEnded` (no terminó, o no tiene fin) y `isNotTerminated` (no la dieron de baja). Si alguna falla, `continue` pasa a la siguiente.
+- **3d.** Junta los Amendments con su original. Si la Subscription tiene `SBQQ__RevisedSubscription__c`, es un Amendment y su cantidad se suma a la **original**. Las sumas se guardan en un **`Map`** (una agenda "original → cantidad"), llamado `netQuantityByOriginalIdMap`. En la demo queda SUB-A → 125 + 100 − 10 = **215**.
+- **3e.** **`countActiveSubscriptions`** cuenta las originales con cantidad > 0 (215 > 0, así que cuenta 1). Si el número es **igual** al que ya tenía el Contract, no se guarda nada.
+
+**Paso 4: guardar.** Lo hace **`updateContracts`**: `Database.update( lista, false )` hace un solo guardado para todos. El `false` significa "si uno falla, guardá igual los demás", así no se cancela lo que hacía el usuario o CPQ. Los errores van al objeto **Error Log** con **`ErrorLogUtil`**, la misma clase que en el DEV #2.
+
+**Resultado:** el usuario refresca el Contract y ve el número nuevo.
+
+#### Camino 2: el job de la noche
+
+1. **Suena el despertador a las 2:00.** **`ActiveSubscriptionRecountScheduler`** (un *Scheduler* es una clase que Salesforce ejecuta a una hora fija). `'0 0 2 * * ?'` significa "todos los días a las 2:00". Su `execute` solo arranca el Batch.
+2. **Trae todos los Contracts.** **`ActiveSubscriptionRecountBatch.start`**. Un *Batch* procesa mucha cantidad de registros **en tandas de 200**, y cada tanda tiene sus propios límites.
+3. **⭐ Cuenta cada tanda.** `execute` arma el `Set` con los 200 Ids y llama a **la misma** `ActiveSubscriptionCounter.recountActiveSubscriptions`. Como "hoy" es otro día, detecta solas las Subscriptions que vencieron o empezaron.
+4. **Termina.** `finish` está vacío. El job vuelve a dormir hasta la noche siguiente.
+
+#### Una línea por archivo
+
+| Archivo | Qué hace, en simple |
+|---|---|
+| `SubscriptionTrigger` | Se da cuenta de que alguien tocó una Subscription y avisa |
+| `SubscriptionTriggerHandler` | Arma la lista de Contracts a recalcular |
+| `ActiveSubscriptionCounter` ⭐ | Cuenta las activas y guarda el número (lo usan los dos caminos) |
+| `ActiveSubscriptionRecountScheduler` | Despertador de las 2:00 |
+| `ActiveSubscriptionRecountBatch` | Recorre todos los Contracts de a 200 y llama al contador |
+
 ---
 
 ## 4. Código explicado por bloques

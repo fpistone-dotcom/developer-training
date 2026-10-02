@@ -153,6 +153,11 @@ sf data query --target-org smartbytes --query "SELECT ApexClass.Name, Status, Jo
 ### Pasos
 1. Anotar *Active Subscriptions* del Contract (por ejemplo, 1).
 2. **Amend** → en la Quote de Amendment dejar el **inicio = hoy** y subir la cantidad (por ejemplo, de 125 a 225) → Ordered.
+   Por script (hace lo mismo que el botón Amend; completar `CONTRACT_NUMBER` y `NEW_QUANTITY` antes):
+   ```bash
+   sf apex run --file scripts/apex/qa-dev4-amendment.apex --target-org smartbytes
+   ```
+   Después ordenar la Quote con el comando que imprime el script.
 3. Esperar unos 30 segundos (Order → DEV #2 → Flow 2 → contracting de CPQ) y refrescar el Contract.
 4. Repetir con un Amendment que baje la cantidad (por ejemplo, de 225 a 215).
 
@@ -180,7 +185,7 @@ sf data query --target-org smartbytes --query "SELECT ApexClass.Name, Status, Jo
 **Estado:** pendiente. Cubierto por `fullCancellationNotCountedTest`. En el org solo se probó una baja **parcial** (−10, SUB-0000013), que **no** completa `SBQQ__TerminatedDate__c`.
 
 ### Pasos
-1. En un Contract de prueba (no el 00000108 de la demo), **Amend** con inicio = hoy y bajar la cantidad de una Subscription a **0** → Ordered.
+1. En un Contract de prueba (no el 00000108 de la demo), **Amend** con inicio = hoy y bajar la cantidad de una Subscription a **0** → Ordered. Se puede usar `scripts/apex/qa-dev4-amendment.apex` con `NEW_QUANTITY = 0`.
 2. Esperar unos 30 segundos y refrescar.
 
 ### Resultados esperados
