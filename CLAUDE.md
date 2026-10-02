@@ -220,3 +220,5 @@ sf data query --query "SELECT Id, Status FROM Order LIMIT 5"       # consultar d
 ```
 
 Usar **git** desde el inicio, con un commit por avance significativo, para tener historial para el Code Review.
+
+**Repo solo local, sin remoto (decisión de Francisco, 02/10/2026):** la migración a GitHub (crear el repo + push) se hace **al terminar todos los requirements**. Mientras tanto, no proponerla. Pendiente para ese momento: configurar `git config --global user.name` / `user.email` (hoy los commits salen como `franciscopistone@Franciscos-MacBook-Pro.local`).
