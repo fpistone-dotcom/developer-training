@@ -66,3 +66,74 @@ sf data query --target-org smartbytes --query "SELECT Name, Class_Name__c, Recor
 
 ### Limpieza
 La Order de prueba queda en el org. Si se genera un Contract, dejarlo documentado junto con los Ids de la prueba en el Test Rail.
+
+---
+
+## QA-DEV1-01 — El vencimiento no se pisa en una Quote con productos y aprobación manual
+
+**Requirement:** DEV #1, Parte A ("30 days from the date in which it was approved").
+**Estado:** pendiente. Cubierto por tests unitarios y probado en el org con Quotes **sin Quote Lines** (Q-00061, Q-00072 a Q-00078).
+
+### Por qué hace falta esta prueba
+Salesforce no garantiza el orden entre nuestro `QuoteTrigger` y el trigger de CPQ `SBQQ.QuoteBefore`. Además, con Quote Lines, CPQ recalcula precios en un proceso asíncrono. Hay que confirmar que ninguno de los dos pisa la fecha que pone nuestro trigger al aprobar.
+
+### Precondiciones
+- `QuoteTrigger` y `QuoteTriggerHandler` deployados.
+- `Quote_Approval_V2` activo. El usuario de QA cargado como **Approving Manager** de la Quote.
+
+### Pasos
+1. Crear una Opportunity abierta en *Burlington Textiles Corp of America* y una Quote con **Monthly Named Users**, **20% de descuento** y **Net 30**.
+2. Esperar unos segundos a que CPQ calcule los precios. Anotar el **Expiration Date** (default de CPQ).
+3. **Submit for Approval** → la Quote queda **In Review**, pendiente del Manager.
+4. **Esperar al menos un día** (para que "hoy" sea distinto de la fecha de creación) y aprobarla desde *Items to Approve*.
+5. Esperar 1 minuto y refrescar.
+
+### Resultados esperados
+
+| # | Qué verificar | Esperado |
+|---|---|---|
+| 1 | Status | **Approved** |
+| 2 | Expiration Date | **Fecha de aprobación + 30** (no creación + 30) |
+| 3 | Expiration Date después de 1 minuto (recálculo de CPQ) | **Sin cambios** |
+| 4 | Error Logs | Vacía |
+
+### Si falla
+Si la fecha vuelve a creación + 30, CPQ la está pisando después de nuestro trigger. Documentar y escalar: habría que evaluar otro contexto (por ejemplo, after update) o un ajuste en la configuración de CPQ.
+
+---
+
+## QA-DEV1-02 — Recall automático por el job nocturno (sin forzar la fecha)
+
+**Requirement:** DEV #1, Parte B ("the Quote approvals should be recalled").
+**Estado:** pendiente. Cubierto por tests unitarios y probado en el org corriendo el Batch **a mano** (Q-00079). El job nocturno ya corrió solo el 01/10/2026 (Completed, 0 Quotes, 0 errores), pero todavía no procesó ninguna Quote real.
+
+### Precondiciones
+- Job **"Quote Expiration Recall - Nightly"** en estado WAITING (*Setup → Scheduled Jobs*).
+- Una Quote **In Review** con aprobación pendiente, Opportunity abierta y **Expiration Date = mañana** (por ejemplo Net 60 + Submit).
+
+### Pasos
+1. Dejar la Quote preparada y no tocarla.
+2. Al día siguiente, después de la 1:00 (America/Los_Angeles), revisar la Quote y los jobs.
+
+### Resultados esperados
+
+| # | Qué verificar | Dónde | Esperado |
+|---|---|---|---|
+| 1 | Status de la Quote | Registro de la Quote | **Draft**, sin candado |
+| 2 | Approval History | Related list de la Quote | Paso **Recalled** con *"Recalled automatically: ..."* |
+| 3 | Items to Approve del aprobador | Home del aprobador | La aprobación **ya no figura** |
+| 4 | Job | *Setup → Apex Jobs* | `QuoteExpirationBatch`, **Completed**, 0 errores |
+| 5 | Error Logs | Tab **Error Logs** | Vacía |
+
+Query de apoyo:
+```bash
+sf data query --target-org smartbytes --query "SELECT ApexClass.Name, Status, JobItemsProcessed, NumberOfErrors, CreatedDate FROM AsyncApexJob WHERE ApexClass.Name = 'QuoteExpirationBatch' ORDER BY CreatedDate DESC LIMIT 5"
+```
+
+### Si falla
+
+| Síntoma | Causa probable | Siguiente paso |
+|---|---|---|
+| No hay job de `QuoteExpirationBatch` esa noche | El job programado no está activo o el usuario que lo programó fue desactivado | Revisar *Scheduled Jobs* y reprogramarlo |
+| Job Completed pero la Quote sigue In Review | No cumplía algún filtro (Opportunity ganada, sin Opportunity, no vencida) | Revisar los 4 filtros de `start` |
+| Error Log "Recall failed" | El usuario del job no puede hacer recall de esa aprobación | Confirmar que el job lo programó un admin |

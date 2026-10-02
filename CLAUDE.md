@@ -16,8 +16,25 @@ Reglas:
 - **Explicá el "por qué" de Salesforce:** contexto de trigger (before/after), bulkificación, governor limits, por qué una query va afuera del loop, etc. Asumí que sé lo básico de Apex pero que nunca armé un proyecto real completo.
 - **No avances de un requirement al siguiente sin mi confirmación.**
 - **No toques configuración declarativa (IC) sin preguntarme.** Ya está terminada y probada (ver sección 4).
-- Al terminar cada requirement, dame un **resumen para el Code Review**: decisiones de diseño, supuestos, edge cases cubiertos y cómo se prueba en la UI.
+- Al terminar cada requirement, aplicá el **Cierre de cada requirement** (abajo).
 - Soy nuevo en Claude Code: si un comando de terminal o de `sf` es nuevo, explicame qué hace antes de correrlo.
+
+### Cierre de cada requirement (obligatorio antes del commit final)
+
+Al terminar cada requirement, creá o actualizá `docs/code-review/DEVx.md` con estas secciones, en español simple, para que yo pueda defenderlo en el Code Review:
+
+1. **Qué pide el requirement:** el texto original y una explicación en 2 líneas.
+2. **Diseño elegido:** qué piezas hay (trigger, handler, batch, etc.), por qué así y qué alternativas descartamos y por qué.
+3. **Flujo paso a paso:** lista numerada desde la acción del usuario hasta el resultado, indicando en cada paso qué archivo y qué método lo hace.
+4. **Código explicado por bloques:** cada archivo, qué hace cada bloque, por qué está escrito así y qué regla del training cumple (sección 3.1).
+5. **Supuestos y decisiones:** incluí las que consulté con el mentor.
+6. **Edge cases:** tabla con cada caso, cómo se maneja y qué test lo prueba.
+7. **Preguntas probables del Code Review** con su respuesta (mínimo 8), en 3 o 4 líneas cada una y con palabras de nivel training.
+8. **Cómo se prueba en la demo:** pasos exactos en la UI y qué tiene que verse.
+9. **Build Tracker:** componente, test class, fecha de la última corrida y cobertura.
+10. **Limitaciones conocidas y pendientes de QA** (también en `docs/qa-pending.md`).
+
+Además, actualizá las secciones 4 y 5 de este archivo si cambió algo del org, y hacé el commit con el código y el `DEVx.md` juntos.
 
 ---
 
@@ -112,7 +129,7 @@ Automatizaciones y reglas relevantes para los DEV:
 | `Auto_Create_Order_On_Closed_Won` | Record-Triggered Flow (Opportunity, after save) | Req #31: al pasar a Closed Won, marca la Primary Quote aprobada como `SBQQ__Ordered__c = true`. CPQ crea la **Order + Order Products** en estado Draft. |
 | `Auto_Contract_Order_On_Activation` | Record-Triggered Flow (Order, after save) | Req #31: cuando una Order **pasa** a `Status = Activated`, la marca `SBQQ__Contracted__c = true`. CPQ crea **Contract + Subscriptions + Assets** (proceso asíncrono, tarda unos segundos). |
 | Approval Process de Quote | Approval Process | Req #24–26: aprobaciones según la tabla Quote Approval. La Quote queda bloqueada tras el submit. **Hay 2 procesos activos, con criterios de entrada opuestos (cada Quote entra en exactamente uno):** **`Auto_Approval`**: `AND( ISPICKVAL(SBQQ__PaymentTerms__c, "Net 30"), OR( ISBLANK(SBQQ__CustomerDiscount__c), SBQQ__CustomerDiscount__c < 0.15 ) )`; se aprueba sola al hacer Submit. **`Quote_Approval_V2`**: `NOT( <la misma fórmula> )`; 3 pasos en fila: **Finance** (`PaymentTerms != Net 30`, usuario frandev; si no → siguiente paso), **Manager** (`CustomerDiscount >= 15`, `Approving_Manager__c`; si no → aprobar) y **Director** (`>= 25`, `Approving_Director__c`). Inactivos (Obsolete, no borrados, sirven para rollback): `Discount_Approval`, `Billing_Approval` y `Quote_Approval` (V1). |
-| `OrderTrigger` + `OrderTriggerHandler` + `OrderActivationQueueable` | Apex (DEV #2, **hecho**) | Activa la Order cuando su `SBQQ__PriceCalcStatus__c` es o pasa a `Completed`/`Not Needed`. Update: en before update, sin DML. Insert: con un Queueable. Errores en `Error_Log__c` (vía `ErrorLogUtil`). Tests: 14/14, cobertura 100%. |
+| `OrderTrigger` + `OrderTriggerHandler` + `OrderActivationQueueable` | Apex (DEV #2, **hecho**) | Activa la Order cuando su `SBQQ__PriceCalcStatus__c` es o pasa a `Completed`/`Not Needed`. Update: en before update, sin DML. Insert: con un Queueable. Errores en `Error_Log__c` (vía `ErrorLogUtil`). Tests: 13/13, cobertura 100%. |
 | `QuoteTrigger` + `QuoteTriggerHandler` | Apex (DEV #1 Parte A, **hecho**) | En before insert/update, cuando `SBQQ__Status__c` pasa a (o nace) `Approved`, pone `SBQQ__ExpirationDate__c = hoy + 30`. Sin SOQL ni DML. Tests: 8/8, cobertura 100%. |
 | `QuoteExpirationScheduler` + `QuoteExpirationBatch` | Apex (DEV #1 Parte B, **hecho**) | Todas las noches a la 1:00 (job "Quote Expiration Recall - Nightly", `0 0 1 * * ?`) busca Quotes **In Review** con vencimiento `<= TODAY`, con Opportunity y `IsWon = false`, y hace **recall de la aprobación pendiente** (`ProcessWorkitemRequest` con acción `'Removed'`): la Recall Action las pasa a Draft y las desbloquea. Las Quotes ya aprobadas no se tocan (supuesto definido con el mentor). Errores en `Error_Log__c`. Tests: 9/9, cobertura 93% (Batch) y 100% (Scheduler). Detalle en `docs/code-review/DEV1.md`. |
 
