@@ -35,16 +35,25 @@ public class TestDataFactory {
     }
 
     /**
+     * @description Crea e inserta un Product2 activo.
+     * @return El Product2 insertado
+     */
+    public static Product2 createProduct() {
+        Product2 product = new Product2();
+        product.Name = 'Test Product';
+        product.IsActive = true;
+        insert product;
+        return product;
+    }
+
+    /**
      * @description Crea un Product2 y su precio en el Pricebook estándar.
      *              Test.getStandardPricebookId() nos da el Id del Pricebook estándar
      *              dentro del test, sin necesidad de ver los datos reales del org.
      * @return El PricebookEntry insertado
      */
     public static PricebookEntry createPricebookEntry() {
-        Product2 product = new Product2();
-        product.Name = 'Test Product';
-        product.IsActive = true;
-        insert product;
+        Product2 product = createProduct();
 
         PricebookEntry pricebookEntry = new PricebookEntry();
         pricebookEntry.Pricebook2Id = Test.getStandardPricebookId();
@@ -68,6 +77,46 @@ public class TestDataFactory {
         draftContract.Status = 'Draft';
         insert draftContract;
         return draftContract;
+    }
+
+    /**
+     * @description Crea e inserta un Contract en Draft con el inicio y el plazo indicados.
+     *              La fecha de fin la calcula Salesforce (inicio + plazo en meses - 1 día).
+     *              Con contractTerm = null el Contract queda sin fecha de fin (evergreen).
+     * @param accountId    Account del Contract
+     * @param startDate    Fecha de inicio
+     * @param contractTerm Plazo en meses (puede ser null)
+     * @return El Contract insertado
+     */
+    public static Contract createContract( Id accountId, Date startDate, Integer contractTerm ) {
+        Contract con = new Contract();
+        con.AccountId = accountId;
+        con.StartDate = startDate;
+        con.ContractTerm = contractTerm;
+        con.Status = 'Draft';
+        insert con;
+        return con;
+    }
+
+    /**
+     * @description Arma Subscriptions de CPQ en un Contract, sin fechas propias (toman las del
+     *              Contract, como las que crea CPQ en este org). No las inserta.
+     * @param contractId            Contract de las Subscriptions (puede ser null)
+     * @param productId             Producto de las Subscriptions
+     * @param numberOfSubscriptions Cantidad de Subscriptions a armar
+     * @param quantity              Valor de SBQQ__Quantity__c (negativo para una baja de Amendment)
+     * @return Lista de Subscriptions sin insertar
+     */
+    public static List<SBQQ__Subscription__c> buildSubscriptions( Id contractId, Id productId, Integer numberOfSubscriptions, Decimal quantity ) {
+        List<SBQQ__Subscription__c> subscriptionList = new List<SBQQ__Subscription__c>();
+        for ( Integer i = 0; i < numberOfSubscriptions; i++ ) {
+            SBQQ__Subscription__c sub = new SBQQ__Subscription__c();
+            sub.SBQQ__Contract__c = contractId;
+            sub.SBQQ__Product__c = productId;
+            sub.SBQQ__Quantity__c = quantity;
+            subscriptionList.add( sub );
+        }
+        return subscriptionList;
     }
 
     /**

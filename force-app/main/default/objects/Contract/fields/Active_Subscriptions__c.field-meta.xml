@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Active_Subscriptions__c</fullName>
+    <defaultValue>0</defaultValue>
+    <description>DEV #4. Cantidad de Subscriptions activas hoy en este Contract. Lo calculan SubscriptionTrigger (al crear, editar, borrar o recuperar una Subscription) y ActiveSubscriptionRecountBatch (todas las noches a las 2:00). Las revisiones de un Amendment no suman: cuenta una por Subscription original con cantidad neta mayor a 0.</description>
+    <externalId>false</externalId>
+    <inlineHelpText>Subscriptions vigentes hoy (ya empezaron, no vencieron y no fueron terminadas). Los Amendments cambian la cantidad de una Subscription, no suman Subscriptions nuevas. Se actualiza automáticamente.</inlineHelpText>
+    <label>Active Subscriptions</label>
+    <precision>18</precision>
+    <required>false</required>
+    <scale>0</scale>
+    <trackTrending>false</trackTrending>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>

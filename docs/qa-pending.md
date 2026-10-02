@@ -137,3 +137,75 @@ sf data query --target-org smartbytes --query "SELECT ApexClass.Name, Status, Jo
 | No hay job de `QuoteExpirationBatch` esa noche | El job programado no está activo o el usuario que lo programó fue desactivado | Revisar *Scheduled Jobs* y reprogramarlo |
 | Job Completed pero la Quote sigue In Review | No cumplía algún filtro (Opportunity ganada, sin Opportunity, no vencida) | Revisar los 4 filtros de `start` |
 | Error Log "Recall failed" | El usuario del job no puede hacer recall de esa aprobación | Confirmar que el job lo programó un admin |
+
+---
+
+## QA-DEV4-01 — El contador se actualiza en vivo durante un Amendment de CPQ
+
+**Requirement:** DEV #4 ("how many active Subscriptions are currently related to the Contract").
+**Estado:** pendiente. Cubierto por tests unitarios (23) y por el backfill en el org. Los Amendments de prueba (Contract 00000108) se hicieron **antes** de deployar el trigger, así que falta ver `SubscriptionTrigger` corriendo **dentro** del contracting asíncrono de CPQ, junto con `SBQQ.SubscriptionAfter`.
+
+### Precondiciones
+- `SubscriptionTrigger`, `SubscriptionTriggerHandler` y `ActiveSubscriptionCounter` deployados.
+- Permission set `Active_Subscriptions_Access` asignado al usuario de QA.
+- Un Contract con **Monthly Named Users** cuya **fecha de inicio ya pasó** (para que la revisión sea vigente hoy).
+
+### Pasos
+1. Anotar *Active Subscriptions* del Contract (por ejemplo, 1).
+2. **Amend** → en la Quote de Amendment dejar el **inicio = hoy** y subir la cantidad (por ejemplo, de 125 a 225) → Ordered.
+3. Esperar unos 30 segundos (Order → DEV #2 → Flow 2 → contracting de CPQ) y refrescar el Contract.
+4. Repetir con un Amendment que baje la cantidad (por ejemplo, de 225 a 215).
+
+### Resultados esperados
+
+| # | Qué verificar | Esperado |
+|---|---|---|
+| 1 | Subscription nueva | +100 (y después −10), con *Revised Subscription* = la original |
+| 2 | *Active Subscriptions* | **Sin cambios** (sigue en 1: los Amendments no suman Subscriptions) |
+| 3 | Job de contracting | `QueueableContractOrdersClient` **Completed** en *Setup → Apex Jobs* |
+| 4 | Error Logs | Vacía |
+
+### Si falla
+| Síntoma | Causa probable | Siguiente paso |
+|---|---|---|
+| El número sube a 2 o 3 | La revisión no apunta a la original | Revisar `SBQQ__RevisedSubscription__c` de la Subscription nueva |
+| El contracting falla | Algún límite dentro del job de CPQ | Revisar el debug log. Nuestro código usa 1 SOQL y 1 DML y no encola jobs |
+| Error Log de `ActiveSubscriptionCounter` | Falló el update del Contract | Leer `Error_Message__c`. El Batch nocturno lo corrige |
+
+---
+
+## QA-DEV4-02 — Baja total de una Subscription por Amendment
+
+**Requirement:** DEV #4, parte (B)/(C).
+**Estado:** pendiente. Cubierto por `fullCancellationNotCountedTest`. En el org solo se probó una baja **parcial** (−10, SUB-0000013), que **no** completa `SBQQ__TerminatedDate__c`.
+
+### Pasos
+1. En un Contract de prueba (no el 00000108 de la demo), **Amend** con inicio = hoy y bajar la cantidad de una Subscription a **0** → Ordered.
+2. Esperar unos 30 segundos y refrescar.
+
+### Resultados esperados
+
+| # | Qué verificar | Esperado |
+|---|---|---|
+| 1 | Subscription nueva | Cantidad negativa por el total (por ejemplo, −125) apuntando a la original |
+| 2 | `SBQQ__TerminatedDate__c` de la original | **Observar y documentar** (dato para el Code Review: ¿lo completa CPQ?) |
+| 3 | *Active Subscriptions* | Baja en 1 (el neto es 0) |
+
+---
+
+## QA-DEV4-03 — El job nocturno corrige una Subscription que vence por fecha
+
+**Requirement:** DEV #4, parte (C) "currently".
+**Estado:** pendiente. Cubierto por `expiredByTimeTest`. El job *Active Subscriptions Recount - Nightly* está programado (02/10/2026) pero todavía no corrió.
+
+### Pasos
+1. Elegir una Subscription de prueba y poner **Subscription End Date = hoy** (sigue activa hoy, así que el número no cambia).
+2. Al día siguiente, después de las 2:00 (America/Los_Angeles), refrescar el Contract.
+
+### Resultados esperados
+
+| # | Qué verificar | Esperado |
+|---|---|---|
+| 1 | *Active Subscriptions* | Bajó en 1, sin que nadie editara nada |
+| 2 | Job | `ActiveSubscriptionRecountBatch` **Completed**, 0 errores, en *Setup → Apex Jobs* |
+| 3 | Error Logs | Vacía |
