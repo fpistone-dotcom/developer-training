@@ -266,6 +266,7 @@ AND SBQQ__Opportunity2__r.IsWon = false
 | Sin Opportunity | In Review | `notRecalledWithoutOpportunityTest` |
 | "In Review" a mano, sin aprobación pendiente | In Review, sin error | `notRecalledWithoutPendingApprovalTest` |
 | El Scheduler se programa y lanza el Batch | `CronTrigger` con el cron + 1 `AsyncApexJob` | `scheduleNightlyJobTest` |
+| El job real ya está programado en el org con el mismo nombre | El test programa el suyo con otro nombre (`JOB_NAME + ' (Test)'`) | `scheduleNightlyJobTest` |
 
 ---
 
@@ -307,7 +308,10 @@ Usamos `Approval.process( lista, false )`: los demás recalls se hacen igual. El
 **12. ¿Hay recursión entre el Batch y el trigger?**
 El recall pasa la Quote a Draft y eso dispara `QuoteTrigger`, pero el trigger solo reacciona cuando el status pasa **a Approved**. Draft no lo activa, así que no hay loop.
 
-**13. ¿Cómo sé que el job corre de verdad?**
+**13. ¿Por qué el test del Scheduler usa otro nombre de job?**
+Porque los jobs programados son de todo el org y **no se aíslan en los tests** como los registros. Cuando programamos el job real, el test empezó a fallar con "already scheduled": Salesforce no permite dos jobs con el mismo nombre. Con un nombre propio de test se evita el choque, y el test sigue verificando el cron y que se lance el Batch.
+
+**14. ¿Cómo sé que el job corre de verdad?**
 En **Setup → Scheduled Jobs** ("Quote Expiration Recall - Nightly") y en **Apex Jobs**. El 01/10/2026 corrió solo a la 1:09 (hora del org) y terminó *Completed* sin errores. Procesó 0 Quotes porque ninguna estaba vencida.
 
 ---
@@ -350,10 +354,10 @@ En **Setup → Scheduled Jobs** ("Quote Expiration Recall - Nightly") y en **Ape
 
 | Componente | Test Class | Última corrida | Cobertura |
 |---|---|---|---|
-| QuoteTrigger | QuoteTriggerHandlerTest | 30/09/2026 | 100% |
-| QuoteTriggerHandler | QuoteTriggerHandlerTest | 30/09/2026 | 100% |
-| QuoteExpirationBatch | QuoteExpirationBatchTest | 30/09/2026 | 93% |
-| QuoteExpirationScheduler | QuoteExpirationSchedulerTest | 30/09/2026 | 100% |
+| QuoteTrigger | QuoteTriggerHandlerTest | 02/10/2026 | 100% |
+| QuoteTriggerHandler | QuoteTriggerHandlerTest | 02/10/2026 | 100% |
+| QuoteExpirationBatch | QuoteExpirationBatchTest | 02/10/2026 | 93% |
+| QuoteExpirationScheduler | QuoteExpirationSchedulerTest | 02/10/2026 | 100% |
 
 ---
 

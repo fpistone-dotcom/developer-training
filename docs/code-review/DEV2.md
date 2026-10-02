@@ -272,10 +272,10 @@ El log es un registro del sistema, no del usuario. Si el usuario que disparó el
 
 | Componente | Test Class | Última corrida | Cobertura |
 |---|---|---|---|
-| OrderTrigger | OrderTriggerHandlerTest | 30/09/2026 | 100% |
-| OrderTriggerHandler | OrderTriggerHandlerTest | 30/09/2026 | 100% |
-| OrderActivationQueueable | OrderTriggerHandlerTest | 30/09/2026 | 100% |
-| ErrorLogUtil | ErrorLogUtilTest | 30/09/2026 | 100% |
+| OrderTrigger | OrderTriggerHandlerTest | 02/10/2026 | 100% |
+| OrderTriggerHandler | OrderTriggerHandlerTest | 02/10/2026 | 100% |
+| OrderActivationQueueable | OrderTriggerHandlerTest | 02/10/2026 | 100% |
+| ErrorLogUtil | ErrorLogUtilTest | 02/10/2026 | 100% |
 
 ---
 

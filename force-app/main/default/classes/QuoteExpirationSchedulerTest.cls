@@ -12,8 +12,13 @@ private class QuoteExpirationSchedulerTest {
      */
     @isTest
     static void scheduleNightlyJobTest() {
+        // Los jobs programados NO se aíslan en los tests: el job real del org ya existe con
+        // JOB_NAME, y Salesforce no permite dos jobs con el mismo nombre. Por eso el test usa
+        // un nombre propio.
+        String testJobName = QuoteExpirationScheduler.JOB_NAME + ' (Test)';
+
         Test.startTest();
-        Id jobId = System.schedule( QuoteExpirationScheduler.JOB_NAME,
+        Id jobId = System.schedule( testJobName,
             QuoteExpirationScheduler.CRON_EXPRESSION, new QuoteExpirationScheduler() );
         Test.stopTest(); // acá corre el execute() del Scheduler
 
