@@ -94,7 +94,22 @@ Además, el debug log mostró que CPQ inserta **otra** Renewal Quote en cada pas
 | **Email armado en Apex (sin Email Template)** | No suma metadata (IC). Con un User como destinatario, Salesforce no deja usar `whatId`, así que los merge fields de la Quote no funcionan en un template. | Email Template: metadata nueva y merge fields limitados. |
 | **`setTargetObjectId( OwnerId )`** | Los emails a usuarios internos **no cuentan** para el límite diario del org (15 en Developer Edition). | `setToAddresses( email )`: cuenta para el límite diario. |
 | **try/catch alrededor del envío** | El email se manda dentro del save en el que CPQ crea la Quote. Una excepción sin atrapar haría rollback de la Renewal Quote. El error queda en `Error_Log__c`. | Sin try/catch: un problema de email rompería la renovación. |
-| **Job a las 3:00** | Después de los jobs del DEV #1 (1:00) y del DEV #4 (2:00). | — |
+| **Job a las 3:00** | Después de los jobs del DEV #1 (1:00) y del DEV #4 (2:00). | **A la misma hora que otro job:** competirían por la cola async y podrían tocar los mismos registros a la vez (el DEV #4 y el DEV #3 escriben en el Contract). **De día:** cambios mientras los usuarios trabajan. |
+
+### Decisiones chicas del código: por qué sí y por qué no las otras
+
+*(Agregado el 05/10/2026, regla nueva del CLAUDE.md.)*
+
+| Decisión | Por qué sí | Otras opciones y qué pasaría |
+|---|---|---|
+| **`STATUS_ACTIVATED` como constante** | El texto `'Activated'` tiene nombre y no se repite dentro de cada clase. **Ojo:** hoy `ContractTriggerHandler` y `RenewalQuoteBatch` tienen **cada uno** su constante (duplicada). Mejora posible: que el Batch use `ContractTriggerHandler.STATUS_ACTIVATED`, como el Queueable del DEV #2 usa `OrderTriggerHandler.STATUS_DRAFT`. | **Escribir `'Activated'` suelto en cada lugar:** un error de tipeo no lo detecta el compilador. **Compartir la constante:** más DRY. No se cambió para no tocar código ya probado al cierre del proyecto (anotado en las limitaciones). |
+| **`!newContract.SBQQ__RenewalForecast__c` antes de tildarlo** | No pisamos un flag que ya está tildado (por ejemplo, si alguien lo tildó a mano). | **Tildarlo siempre:** da el mismo resultado, pero sería una asignación innecesaria y menos clara. |
+| **`Database.update( lista, false )` en el Batch** | Si un Contract falla, se registra y la noche siguiente se reintenta (el flag queda en false). | **`update lista`:** un error haría fallar toda la tanda sin Error Log. Con tanda de 1 da casi lo mismo, pero el test bulk usa 200. |
+| **Devolver el `Set<Id>` de Contracts guardados** | La etapa de la Opportunity se cambia **solo** para los Contracts cuyo update salió bien. | **Usar todos los Contracts de la tanda:** avanzaríamos la Opportunity de un Contract que no tiene Renewal Quote. |
+| **`== true` al leer el flag subiendo dos lookups** | Si la Opportunity no tiene Contract, el valor llega `null`, y `null == true` es false: no se manda email. | **`if ( flag )`:** con `null` tira una excepción en tiempo de ejecución. |
+| **`orgUrl` calculado una vez, afuera del loop** | Es el mismo para todas las Quotes. | **Adentro del loop:** el mismo resultado, calculado N veces sin necesidad. |
+| **`setSaveAsActivity( false )`** | Salesforce lo **exige** cuando el destinatario es un User (`setTargetObjectId`). | **`true`:** el envío falla con un error. |
+| **`List<SObject>` en `saveLogsForFailures`** | Sirve para Contracts y Opportunities (DRY). `SObject` es el tipo base de cualquier registro, no es un genérico. | **Dos métodos casi iguales** (uno por objeto): código duplicado. |
 
 ---
 
@@ -572,6 +587,7 @@ CPQ le pone la Renewal Quote como Primary y sincroniza productos y Amount. Nosot
 11. **Lección de deploy:** se desplegaron solo los archivos nuevos o cambiados.
 12. **Caso gris de los dos flags en el mismo save:** cuando el Batch procesa un Contract que **no** tenía Renewal Forecast (activado antes del trigger, como 00000100 a 00000105), tilda los dos flags en el mismo update. Si en ese save CPQ crea también su Renewal Quote temporal, nuestro filtro ve `RenewalQuoted = true` y su email saldría con un link que después muere. No se probó (dejaría un Contract real con su renovación generada). En el flujo normal no pasa, porque la activación y los 30 días son transacciones separadas. Si ocurre, el Owner recibe un email extra; la Quote real y su email salen bien.
 13. **Dependencia del comportamiento interno de CPQ:** la Quote temporal, su borrado y el rollback interno son lógica del paquete (oculta en los logs). Si una versión futura de CPQ cambia ese mecanismo, hay que volver a verificar el filtro.
+14. **Constante duplicada (revisión del 05/10/2026):** `STATUS_ACTIVATED` está definida en `ContractTriggerHandler` y en `RenewalQuoteBatch`. Funciona igual; lo más DRY sería que el Batch use la del handler. No se cambió al cierre para no tocar código ya probado.
 
 Pendientes de QA (detalle en [`docs/qa-pending.md`](../qa-pending.md)):
 - ~~**QA-DEV3-01:** recepción del email y que el link abra la Quote.~~ ✅ **Cerrado el 05/10/2026:** llegaron Q-00092 y Q-00108 con su link funcionando, y la activación ya no manda el email de la Quote temporal.

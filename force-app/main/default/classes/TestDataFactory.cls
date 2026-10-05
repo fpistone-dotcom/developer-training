@@ -205,6 +205,41 @@ public class TestDataFactory {
     }
 
     /**
+     * @description Arma Quote Lines de CPQ en una Quote. No las inserta.
+     *              Al insertarlas, CPQ recalcula el Roll-Up SBQQ__LineItemCount__c de la Quote.
+     * @param quoteId            Quote de las líneas (ya insertada)
+     * @param productId          Producto de las líneas
+     * @param numberOfQuoteLines Cantidad de líneas a armar
+     * @return Lista de Quote Lines sin insertar
+     */
+    public static List<SBQQ__QuoteLine__c> buildQuoteLines( Id quoteId, Id productId, Integer numberOfQuoteLines ) {
+        List<SBQQ__QuoteLine__c> quoteLineList = new List<SBQQ__QuoteLine__c>();
+        for ( Integer i = 0; i < numberOfQuoteLines; i++ ) {
+            SBQQ__QuoteLine__c quoteLine = new SBQQ__QuoteLine__c();
+            quoteLine.SBQQ__Quote__c = quoteId;
+            quoteLine.SBQQ__Product__c = productId;
+            quoteLine.SBQQ__Quantity__c = 1;
+            quoteLineList.add( quoteLine );
+        }
+        return quoteLineList;
+    }
+
+    /**
+     * @description Arma un Quote Document de CPQ (el registro que crea "Generate Document -> Save")
+     *              para una Quote. No lo inserta.
+     * @param quoteId       Quote del documento (ya insertada)
+     * @param opportunityId Opportunity del documento (puede ser null)
+     * @return Quote Document sin insertar
+     */
+    public static SBQQ__QuoteDocument__c buildQuoteDocument( Id quoteId, Id opportunityId ) {
+        SBQQ__QuoteDocument__c quoteDocument = new SBQQ__QuoteDocument__c();
+        quoteDocument.Name = 'Test Quote Document';
+        quoteDocument.SBQQ__Quote__c = quoteId;
+        quoteDocument.SBQQ__Opportunity__c = opportunityId;
+        return quoteDocument;
+    }
+
+    /**
      * @description Arma un Order Product por cada Order. No los inserta.
      *              Las Orders ya tienen que estar insertadas (se necesita su Id).
      * @param orderList      Orders que van a recibir el producto

@@ -66,9 +66,26 @@ Los 2 Approval Processes activos (`Auto_Approval` y `Quote_Approval_V2`, con cri
 | Decisión | Por qué | Alternativa descartada |
 |---|---|---|
 | **Scheduler + Batch, no trigger** | "La Quote venció" **no es un guardado**: es el calendario que avanza. Un trigger nunca se enteraría. | Trigger: imposible. **Solo Scheduled:** una transacción con un solo juego de límites. |
-| **Batch** | Tandas de 200, **cada una con sus propios governor limits**: escala con cualquier volumen. | — |
+| **Batch** | Tandas de 200, **cada una con sus propios governor limits**: escala con cualquier volumen. | **Queueable encadenado:** se puede, pero hay que programar el encadenamiento a mano y bloquearlo en los tests. **Solo Scheduled:** todo en una transacción; con muchas Quotes se rompe el límite. |
 | **Recall = acción `'Removed'`** | Es exactamente el botón "Recall". Salesforce corre la Recall Action (Draft) y **desbloquea solo**. | **`Approval.unlock` + cambiar el status:** necesita *Enable record locking and unlocking in Apex*, que está desactivado. |
 | **Solo Quotes In Review** | Decisión del mentor: el recall aplica a aprobaciones **pendientes**. Una aprobación terminada no tiene nada que retirar. | Tocar las aprobadas: el "recall" de algo terminado no existe en Salesforce. |
+
+### Decisiones chicas del código: por qué sí y por qué no las otras
+
+*(Agregado el 05/10/2026, regla nueva del CLAUDE.md.)*
+
+| Decisión | Por qué sí | Otras opciones y qué pasaría |
+|---|---|---|
+| **Batch con el tamaño por defecto (200)** | `Approval.process` recibe la **lista** entera de recalls: 1 sola llamada por tanda. 200 entra holgado en los límites. | **Tamaño 1:** 200 veces más transacciones para lo mismo, más lento y sin ninguna ventaja (acá no hay Queueables de CPQ, como en el DEV #3). **Solo Scheduled sin Batch:** un solo juego de límites: con muchas Quotes vencidas se rompería todo junto. |
+| **Job a la 1:00** | Es de madrugada (nadie trabaja), y los jobs siguientes se escalonaron (DEV #4 a las 2:00, DEV #3 a las 3:00). | **Todos a la misma hora:** compiten por la cola async y pueden tocar los mismos registros a la vez. **De día:** el recall podría sacar una aprobación mientras el aprobador la está mirando. |
+| **`SBQQ__ExpirationDate__c <= TODAY`** | Si el job no corre una noche, la siguiente toma las Quotes atrasadas. | **`= TODAY`:** una noche fallida deja esas Quotes pendientes para siempre. |
+| **Los filtros en el WHERE** (In Review, con Opportunity, `IsWon = false`) | La query trae solo lo que hay que procesar (**Governor Limits**: WHERE para reducir el volumen). | **Traer todas y filtrar con `if` en Apex:** gasta filas de query (límite 50.000) y tiempo de CPU en Quotes que no se tocan. |
+| **`IsWon = false` y no `StageName != 'Closed Won'`** | `IsWon` lo calcula Salesforce según el tipo de etapa: no depende del texto. | **Por texto:** si alguien renombra la etapa o agrega otra etapa ganada, el filtro deja de funcionar sin avisar. |
+| **Sin Quotes sin Opportunity** | El requirement habla de "the related Opportunity": sin Opportunity no hay nada que evaluar. | **Incluirlas:** se haría recall de Quotes sueltas que el requirement no menciona. |
+| **`Set<Id>` de Quotes para buscar los work items** | Se usa en `IN :quoteIdSet`: un Set no tiene duplicados y expresa "conjunto de Ids". | **`List<Id>`:** funciona igual en el `IN`, pero no comunica que el orden no importa y admite duplicados. |
+| **1 query de `ProcessInstanceWorkitem` afuera del loop** | Una query para toda la tanda (**nunca SOQL en un loop**). | **Una query por Quote:** con 200 Quotes son 200 queries → `Too many SOQL queries: 101`. |
+| **`Approval.process( lista, false )`** | `allOrNone = false`: si un recall falla, los demás siguen y el error queda en `Error_Log__c`. | **`true`:** un solo recall fallido revierte toda la tanda y nadie se entera de cuál falló. |
+| **Sin `Database.Stateful`** | Cada tanda guarda sus propios logs: no hay nada que acumular entre tandas. | **Con Stateful:** Salesforce serializa el estado entre tandas (más lento), solo para juntar errores que ya se guardan. Además está fuera del curso. |
 
 ---
 

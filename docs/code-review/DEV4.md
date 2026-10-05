@@ -49,8 +49,23 @@ En el org también existe `SBQQ.SubscriptionAfter` (trigger de CPQ). No es nuest
 | **Clase propia para el recuento** | Lo usan dos caminos (trigger y Batch). Si la regla de "activa" cambia, cambia en **un solo lugar** (DRY). | Copiar la lógica en el Batch: dos lugares que mantener. |
 | **Batch + Scheduler nocturno** | Una Subscription puede **empezar** o **vencer** sin que nadie la edite (un Amendment con fecha futura, el fin del Contract). El trigger no se entera: es el mismo problema del DEV #1. | **Solo trigger:** el número queda viejo hasta que alguien edite algo, y no cumple "currently". **Batch solo de "los que cruzaron una fecha hoy":** query más compleja, y si una noche falla esos Contracts quedan mal para siempre. |
 | **El Batch recorre TODOS los Contracts** | Query más simple. De paso completa con 0 los Contracts creados antes del campo (el default solo aplica a registros nuevos). Solo hace update si el número cambió. | Solo Contracts con Subscriptions (semi-join): no corrige un Contract que quedó con un número viejo y sin Subscriptions. |
-| **A las 2:00** | Decisión de Francisco: no coincidir con el job del DEV #1 (1:00). | — |
+| **A las 2:00** | Decisión de Francisco: no coincidir con el job del DEV #1 (1:00). | **A la misma hora que otro job:** competirían por la cola async y podrían tocar los mismos registros a la vez (el DEV #4 y el DEV #3 escriben en el Contract). **De día:** cambios mientras los usuarios trabajan. |
 | **Opción C para Amendments** | Ver sección 5. Para un vendedor, un Amendment cambia la cantidad de **una** Subscription, no crea otra. | Contar registros (daría 3 en el caso de la demo), solo cantidad > 0 (daría 2), sumar cantidades (eso son licencias, no Subscriptions). |
+
+### Decisiones chicas del código: por qué sí y por qué no las otras
+
+*(Agregado el 05/10/2026, regla nueva del CLAUDE.md.)*
+
+| Decisión | Por qué sí | Otras opciones y qué pasaría |
+|---|---|---|
+| **`Set<Id>` de Contracts a recontar** | Si 200 Subscriptions del mismo Contract cambian juntas, el Contract se recuenta **una** vez. | **`List<Id>`:** el mismo Contract aparecería 200 veces en la lista (más trabajo y una lista más grande sin necesidad). |
+| **1 query con subquery `SBQQ__Subscriptions__r`** | Contracts y sus Subscriptions en una sola SOQL, para todos los Contracts juntos. | **Una query de Subscriptions por Contract:** SOQL en un loop → límite de 101. **2 queries separadas + Map:** funciona, pero son 2 queries y más código para unir los datos. |
+| **Recorrer la subquery con un for directo** | Salesforce trae la subquery por partes: no falla si un Contract tiene más de 200 Subscriptions. | **Pasar `con.SBQQ__Subscriptions__r` entera a una variable o a otro método:** con más de 200 hijos tira `QueryException` (*"Aggregate query has too many rows"*). |
+| **`Map<Id, Decimal>` cantidad neta por Subscription original** | La clave es la original (la propia o su `SBQQ__RevisedSubscription__c`): los Amendments suman o restan sobre la misma clave. Patrón `valorPorClaveMap`. | **Contar registros directamente:** el Contract de la demo daría 3 en lugar de 1 (ver la opción C). |
+| **`isInForceToday` en un método aparte** | La regla de "activa" queda en un solo lugar, con 3 Boolean de nombre claro. | **Un `if` largo dentro del loop:** difícil de leer y de testear por partes. |
+| **Update solo si el número cambió** | Si el número es el mismo, no se toca el Contract: menos DML y no se disparan los triggers del Contract (CPQ, DEV #3) sin motivo. | **Actualizar siempre:** el Batch nocturno haría un update de **todos** los Contracts cada noche. |
+| **`Database.update( lista, false )`** | Si un Contract falla, los demás se actualizan y el error va a `Error_Log__c`. | **`update lista`:** un Contract con problemas haría fallar la Subscription que lo disparó (rollback de lo que hizo el usuario o CPQ). |
+| **El Batch recorre todos los Contracts, sin WHERE** | Ver la tabla de arriba: completa con 0 los Contracts creados antes del campo y corrige números viejos. | **Con WHERE (solo con Subscriptions):** un Contract al que le borraron todas quedaría con el número viejo. |
 
 ---
 

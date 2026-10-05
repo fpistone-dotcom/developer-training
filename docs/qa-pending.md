@@ -305,3 +305,44 @@ sf data query --target-org smartbytes --query "SELECT ApexClass.Name, Status, Jo
 | 1 | Subscription nueva | +10 apuntando a la original |
 | 2 | Productos de la Renewal Opportunity | **Observar y documentar:** ¿pasa de 215 a 225? |
 | 3 | Error Logs | Vacía |
+
+---
+
+## QA-DEV5-01 — La barra de progreso vista por un usuario Direct Sales
+
+**Requirement:** DEV #5.
+**Estado:** pendiente. El controller se probó en el org como frandev (System Administrator). Se verificó que `Training_Quote_Page` es el org default de la Quote y se asignó `Quote_Progress_Access` a sh.dsales, pero no se miró la UI con ese usuario.
+
+### Pasos
+1. Loguearse como **sh.dsales** (Direct Sales).
+2. Abrir una Quote que ese usuario pueda ver (por ejemplo, Q-00096).
+
+### Resultados esperados
+
+| # | Qué verificar | Esperado |
+|---|---|---|
+| 1 | Card *Quote Progress* | Visible arriba de la columna derecha |
+| 2 | Pasos | Los mismos ✅/❌ que ve frandev (Q-00096: 5 of 5) |
+| 3 | Error de acceso | **No aparece** *"You do not have access to the Apex class"*. Si aparece, revisar la asignación de `Quote_Progress_Access` |
+| 4 | Botón ⟳ | Recarga sin errores |
+
+---
+
+## QA-DEV5-02 — "Demo estrella" completa desde la UI (0/5 → 5/5)
+
+**Requirement:** DEV #5 (y la cadena DEV #1, IC de aprobación, Req #30/#31, DEV #2, DEV #4).
+**Estado:** pendiente. Cada paso se verificó por separado (controller sobre Quotes reales y documento generado por la API de CPQ), pero no se hizo el recorrido completo con los botones de la UI.
+
+### Pasos
+Seguir el guion de [`code-review/DEV5.md`](code-review/DEV5.md), sección 8.B (New Quote → Edit Lines → Submit for Approval → Generate Document → Opportunity Closed Won), tocando ⟳ después de cada paso.
+
+### Resultados esperados
+
+| # | Qué verificar | Esperado |
+|---|---|---|
+| 1 | Barra después de cada paso | 0/5 → 1/5 → 2/5 → 3/5 → 5/5 |
+| 2 | Expiration Date al aprobar | Hoy + 30 (DEV #1) |
+| 3 | Order | Activated (DEV #2) |
+| 4 | Contract | Creado unos segundos después, con *Active Subscriptions* = 1 (DEV #4) |
+| 5 | Error Logs | Vacía |
+| 6 | Anotar | Número de Quote, Order y Contract creados, para la evidencia del Code Review |

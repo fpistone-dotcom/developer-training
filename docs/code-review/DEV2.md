@@ -54,6 +54,21 @@ Salesforce **no permite activar una Order sin Order Products**, y CPQ inserta **
 | **Trigger en Order y no en OrderItem** | Un trigger en OrderItem activaría la Order con la primera tanda de productos, y las siguientes fallarían (no se pueden agregar productos a una Order activada). | Trigger en OrderItem. |
 | **`Error_Log__c` + `ErrorLogUtil`** | Los errores quedan guardados y visibles en una tab, no solo en un debug log que nadie mira. | `System.debug`. |
 
+### Decisiones chicas del código: por qué sí y por qué no las otras
+
+*(Agregado el 05/10/2026, regla nueva del CLAUDE.md. Completa la columna "Alternativa descartada" de arriba con qué pasaría si la eligiéramos.)*
+
+| Decisión | Por qué sí | Otras opciones y qué pasaría |
+|---|---|---|
+| **Apex y no Flow** (qué pasaría) | Ver la tabla de arriba. | **Record-Triggered Flow:** el camino del update sí sale con un before-save Flow, pero el del insert necesita esperar a que existan los productos. En Flow eso es un *Scheduled Path* o algo asíncrono, más difícil de testear y de controlar ante errores. Además el requirement es DEV. |
+| **`@future`** (qué pasaría) | Ver la tabla de arriba. | Si la Order se creara dentro de un Batch o de otro `@future`, la llamada tiraría una excepción y **se cancelaría la creación de la Order**. |
+| **`READY_PRICE_CALC_STATUSES` como `Set<String>` constante** | Un solo lugar con los valores "listos". Se usa con `contains` en el handler y con `IN :set` en la query del Queueable (DRY). | **Dos comparaciones con `||`:** habría que repetirlas en el handler y en el Queueable, y si se agrega un valor es fácil olvidarse uno. **`List<String>`:** funciona, pero para "¿está adentro?" el Set es la colección natural. |
+| **`Status == 'Draft'` (y no `!= 'Activated'`)** | Solo se activa lo que está en Draft. | **`!= 'Activated'`:** si mañana se agrega un estado como "Cancelled", lo intentaríamos activar. |
+| **Subquery `( SELECT Id FROM OrderItems LIMIT 1 )`** | 1 sola query para todas las Orders, y `LIMIT 1` porque solo importa si tiene **algún** producto. | **Una query por Order:** SOQL en un loop. **`COUNT()` agrupado:** más complejo para lo mismo. **Sin `LIMIT`:** traería todos los productos sin necesidad. |
+| **`Database.update( lista, false )` en el Queueable** | Si una Order no se puede activar, las demás sí, y el error queda en `Error_Log__c`. | **`update lista`:** una sola Order con problemas hace fallar el job entero y no se activa ninguna. |
+| **`ErrorLogUtil` en dos pasos (`buildLog` en el loop, `saveLogs` al final)** | Los logs se arman en memoria y se guardan con **un** insert. | **Insertar cada log en el loop:** DML en un loop → límite de 150 DML. |
+| **`saveLogs` con `AccessLevel.SYSTEM_MODE`** | El log es un registro del sistema: se tiene que guardar aunque el usuario que disparó el proceso no tenga permiso sobre `Error_Log__c`. Quién lo **ve** lo sigue controlando el permission set. | **Modo usuario:** para un usuario sin permiso, el insert del log fallaría y **cancelaría el proceso que queríamos proteger**. |
+
 ---
 
 ## 3. Flujo paso a paso

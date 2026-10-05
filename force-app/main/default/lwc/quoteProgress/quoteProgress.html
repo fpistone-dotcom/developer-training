@@ -1,0 +1,46 @@
+<template>
+    <!-- Card estándar de Salesforce con título, ícono y el botón Refresh -->
+    <lightning-card title="Quote Progress" icon-name="standard:task">
+        <div slot="actions">
+            <template lwc:if={hasSteps}>
+                <span class="slds-text-color_weak slds-m-right_small">{progressSummary}</span>
+            </template>
+            <lightning-button-icon
+                icon-name="utility:refresh"
+                alternative-text="Refresh"
+                title="Refresh"
+                onclick={handleRefresh}>
+            </lightning-button-icon>
+        </div>
+
+        <div class="slds-p-horizontal_medium">
+            <!-- Mientras espera la respuesta de Apex -->
+            <template lwc:if={isLoading}>
+                <lightning-spinner alternative-text="Loading" size="small"></lightning-spinner>
+            </template>
+
+            <!-- Si Apex devolvió un error (por ejemplo, la Quote no existe) -->
+            <template lwc:if={errorMessage}>
+                <p class="slds-text-color_error">{errorMessage}</p>
+            </template>
+
+            <!-- Un renglón por paso: check verde o X roja + el texto del paso -->
+            <ul class="slds-list_vertical-space">
+                <template for:each={steps} for:item="step">
+                    <li key={step.label} class="slds-media slds-media_center">
+                        <div class="slds-media__figure">
+                            <lightning-icon
+                                icon-name={step.iconName}
+                                variant={step.iconVariant}
+                                alternative-text={step.iconText}
+                                title={step.iconText}
+                                size="x-small">
+                            </lightning-icon>
+                        </div>
+                        <div class="slds-media__body">{step.label}</div>
+                    </li>
+                </template>
+            </ul>
+        </div>
+    </lightning-card>
+</template>
