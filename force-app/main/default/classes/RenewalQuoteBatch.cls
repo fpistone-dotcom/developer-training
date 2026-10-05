@@ -108,7 +108,7 @@ public with sharing class RenewalQuoteBatch implements Database.Batchable<SObjec
                 quotedContractIdSet.add( contractList[i].Id );
             }
         }
-        saveLogsForFailures( resultList, contractList, 'Renewal Quote request failed: ' );
+        ErrorLogUtil.saveLogsForFailedResults( resultList, contractList, CLASS_NAME, 'Renewal Quote request failed: ' );
         return quotedContractIdSet;
     }
 
@@ -139,24 +139,6 @@ public with sharing class RenewalQuoteBatch implements Database.Batchable<SObjec
             return;
         }
         List<Database.SaveResult> resultList = Database.update( opportunityToUpdateList, false );
-        saveLogsForFailures( resultList, opportunityToUpdateList, 'Renewal Opportunity stage update failed: ' );
-    }
-
-    /**
-     * @description Builds an Error_Log__c for each record that could not be saved and saves them
-     *              with a single insert. Both updates of the Batch use it (DRY).
-     * @param resultList    Results of Database.update
-     * @param recordList    Records that were sent to save (in the same order as resultList)
-     * @param messagePrefix Text that explains what failed
-     */
-    private static void saveLogsForFailures( List<Database.SaveResult> resultList, List<SObject> recordList, String messagePrefix ) {
-        List<Error_Log__c> errorLogList = new List<Error_Log__c>();
-        for ( Integer i = 0; i < resultList.size(); i++ ) {
-            if ( !resultList[i].isSuccess() ) {
-                errorLogList.add( ErrorLogUtil.buildLog( CLASS_NAME, recordList[i].Id,
-                    messagePrefix + resultList[i].getErrors()[0].getMessage() ) );
-            }
-        }
-        ErrorLogUtil.saveLogs( errorLogList );
+        ErrorLogUtil.saveLogsForFailedResults( resultList, opportunityToUpdateList, CLASS_NAME, 'Renewal Opportunity stage update failed: ' );
     }
 }

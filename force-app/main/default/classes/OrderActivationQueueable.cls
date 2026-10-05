@@ -13,6 +13,8 @@ public with sharing class OrderActivationQueueable implements Queueable {
     private final Set<Id> orderIdSet;
 
     /**
+     * @description Receives the Orders to activate. They are checked again in execute(),
+     *              because they could change while the job waits in the queue.
      * @param orderIdSet Orders to activate
      */
     public OrderActivationQueueable( Set<Id> orderIdSet ) {
@@ -48,28 +50,7 @@ public with sharing class OrderActivationQueueable implements Queueable {
 
         // false = if one Order fails, the others are still activated
         List<Database.SaveResult> saveResultList = Database.update( orderToActivateList, false );
-        logFailures( orderToActivateList, saveResultList );
-    }
-
-    /**
-     * @description Not part of the requirement: no error should fail silently.
-     *              The results come back in the same order as the list, and a failed result
-     *              has no Id, so the Order is found by position (i).
-     *              The logs are collected in a list and saved with a single insert at the end.
-     * @param orderList      Orders that were sent to update
-     * @param saveResultList Results of Database.update
-     */
-    private static void logFailures( List<Order> orderList, List<Database.SaveResult> saveResultList ) {
-        List<Error_Log__c> errorLogList = new List<Error_Log__c>();
-        for ( Integer i = 0; i < saveResultList.size(); i++ ) {
-            if ( saveResultList[i].isSuccess() ) {
-                continue;
-            }
-            for ( Database.Error error : saveResultList[i].getErrors() ) {
-                errorLogList.add( ErrorLogUtil.buildLog( CLASS_NAME, orderList[i].Id,
-                    String.valueOf( error.getStatusCode() ) + ' - ' + error.getMessage() ) );
-            }
-        }
-        ErrorLogUtil.saveLogs( errorLogList );
+        // Not part of the requirement: no error should fail silently (one Error Log per error)
+        ErrorLogUtil.saveLogsForFailedResults( saveResultList, orderToActivateList, CLASS_NAME, 'Order activation failed: ' );
     }
 }

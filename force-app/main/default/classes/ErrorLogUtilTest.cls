@@ -1,5 +1,6 @@
 /**
- * @description Tests for ErrorLogUtil: build logs and save them with a single insert.
+ * @description Tests for ErrorLogUtil: build logs, save them with a single insert, and log the
+ *              failed records of a Database.update (saveLogsForFailedResults).
  */
 @IsTest
 private class ErrorLogUtilTest {
@@ -45,5 +46,52 @@ private class ErrorLogUtilTest {
         Test.stopTest();
 
         System.assertEquals( 0, [SELECT COUNT() FROM Error_Log__c], 'With an empty list nothing should be saved' );
+    }
+
+    /**
+     * @description Positive: a real update that fails (an Account without Name) creates one log
+     *              with the class, the Id of the failed record, the prefix and the StatusCode.
+     *              The record that saved successfully does not create a log.
+     */
+    @isTest
+    static void saveLogsForFailedResultsTest() {
+        List<Account> accountList = new List<Account>{ new Account( Name = 'Valid' ), new Account( Name = 'Will fail' ) };
+        insert accountList;
+        // Name is required: the second update fails with REQUIRED_FIELD_MISSING
+        accountList[1].Name = null;
+
+        Test.startTest();
+        List<Database.SaveResult> saveResultList = Database.update( accountList, false );
+        ErrorLogUtil.saveLogsForFailedResults( saveResultList, accountList, 'SomeClass', 'Account update failed: ' );
+        Test.stopTest();
+
+        List<Error_Log__c> savedLogList = [
+            SELECT Class_Name__c, Record_Id__c, Error_Message__c
+            FROM Error_Log__c
+            WITH SYSTEM_MODE
+        ];
+        System.assertEquals( 1, savedLogList.size(), 'Only the failed record should create a log' );
+        System.assertEquals( 'SomeClass', savedLogList[0].Class_Name__c, 'The log should store the class name' );
+        System.assertEquals( accountList[1].Id, savedLogList[0].Record_Id__c,
+            'The log should point to the failed record, found by its position in the list' );
+        System.assert( savedLogList[0].Error_Message__c.startsWith( 'Account update failed: REQUIRED_FIELD_MISSING - ' ),
+            'The message should have the prefix and the StatusCode, but was: ' + savedLogList[0].Error_Message__c );
+    }
+
+    /**
+     * @description Negative: if every record is saved successfully, no log is created.
+     */
+    @isTest
+    static void saveLogsForFailedResultsAllSuccessTest() {
+        List<Account> accountList = new List<Account>{ new Account( Name = 'Valid' ) };
+        insert accountList;
+        accountList[0].Name = 'Still valid';
+
+        Test.startTest();
+        List<Database.SaveResult> saveResultList = Database.update( accountList, false );
+        ErrorLogUtil.saveLogsForFailedResults( saveResultList, accountList, 'SomeClass', 'Account update failed: ' );
+        Test.stopTest();
+
+        System.assertEquals( 0, [SELECT COUNT() FROM Error_Log__c], 'Successful saves should not create logs' );
     }
 }

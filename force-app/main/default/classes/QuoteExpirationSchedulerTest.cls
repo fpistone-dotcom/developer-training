@@ -23,7 +23,9 @@ private class QuoteExpirationSchedulerTest {
         Test.stopTest(); // the Scheduler execute() runs here
 
         CronTrigger scheduledJob = [SELECT CronExpression FROM CronTrigger WHERE Id = :jobId];
-        System.assertEquals( QuoteExpirationScheduler.CRON_EXPRESSION, scheduledJob.CronExpression,
+        // Literal value on purpose: comparing against CRON_EXPRESSION would compare the constant
+        // with itself and would not detect a wrong cron in the class
+        System.assertEquals( '0 0 1 * * ?', scheduledJob.CronExpression,
             'The job should be scheduled for every night at 1:00' );
 
         Integer batchJobCount = [

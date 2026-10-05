@@ -67,17 +67,10 @@ private class ActiveSubscriptionRecountBatchTest {
      */
     @isTest
     static void bulkRecountTest() {
-        // The query goes outside the for: inside it would be 200 queries and go over the 100 limit
-        Id accountId = getAccountId();
-        List<Contract> contractList = new List<Contract>();
-        for ( Integer i = 0; i < BULK_SIZE; i++ ) {
-            Contract con = new Contract();
-            con.AccountId = accountId;
-            con.StartDate = Date.today();
-            con.ContractTerm = 12;
-            con.Status = 'Draft';
+        List<Contract> contractList = TestDataFactory.buildContracts( getAccountId(), Date.today(), 12, BULK_SIZE );
+        // Old (wrong) number on every Contract, set before the single insert
+        for ( Contract con : contractList ) {
             con.Active_Subscriptions__c = 5;
-            contractList.add( con );
         }
         insert contractList;
 

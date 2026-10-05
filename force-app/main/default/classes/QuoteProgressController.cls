@@ -44,6 +44,11 @@ public with sharing class QuoteProgressController {
         @AuraEnabled public String label;
         @AuraEnabled public Boolean isDone;
 
+        /**
+         * @description Builds one step with its text and its status.
+         * @param label  Text of the step, exactly as in the requirement
+         * @param isDone true = green check, false = red X
+         */
         public ProgressStep( String label, Boolean isDone ) {
             this.label = label;
             this.isDone = isDone;

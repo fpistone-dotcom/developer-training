@@ -134,8 +134,9 @@ public with sharing class ActiveSubscriptionCounter {
 
     /**
      * @description Saves the Contracts with a single update. With allOrNone = false, if one fails
-     *              the others are still saved and the error is stored in Error_Log__c, without
-     *              cancelling the transaction that called us (for example, CPQ's contracting).
+     *              the others are still saved and the error is stored in Error_Log__c (through
+     *              ErrorLogUtil.saveLogsForFailedResults), without cancelling the transaction
+     *              that called us (for example, CPQ's contracting).
      * @param contractToUpdateList Contracts with the new number
      */
     private static void updateContracts( List<Contract> contractToUpdateList ) {
@@ -143,15 +144,6 @@ public with sharing class ActiveSubscriptionCounter {
             return;
         }
         List<Database.SaveResult> resultList = Database.update( contractToUpdateList, false );
-
-        // The results come back in the same order as the list: they are read by position
-        List<Error_Log__c> errorLogList = new List<Error_Log__c>();
-        for ( Integer i = 0; i < resultList.size(); i++ ) {
-            if ( !resultList[i].isSuccess() ) {
-                errorLogList.add( ErrorLogUtil.buildLog( CLASS_NAME, contractToUpdateList[i].Id,
-                    'Active Subscriptions recount failed: ' + resultList[i].getErrors()[0].getMessage() ) );
-            }
-        }
-        ErrorLogUtil.saveLogs( errorLogList );
+        ErrorLogUtil.saveLogsForFailedResults( resultList, contractToUpdateList, CLASS_NAME, 'Active Subscriptions recount failed: ' );
     }
 }

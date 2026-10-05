@@ -108,7 +108,7 @@ Contract de 12 meses (1/10/2026 → 30/09/2027) con dos productos de suscripció
    - c. Por cada Contract, recorre sus Subscriptions: **`isInForceToday`** descarta las que no están vigentes hoy; las vigentes suman su cantidad en un `Map<Id, Decimal>` cuya clave es la **original** (la propia Subscription o su `SBQQ__RevisedSubscription__c`).
    - d. **`countActiveSubscriptions`** cuenta cuántas originales tienen neto > 0.
    - e. Si el número es distinto al guardado, el Contract va a la lista de updates.
-5. → **`updateContracts`**: **1 DML** (`Database.update( lista, false )`). Si algún Contract falla → `ErrorLogUtil.buildLog` + `ErrorLogUtil.saveLogs` (1 insert). La transacción del usuario (o el contracting de CPQ) **no se cancela**.
+5. → **`updateContracts`**: **1 DML** (`Database.update( lista, false )`). Si algún Contract falla → `ErrorLogUtil.saveLogsForFailedResults` (un log por error, con StatusCode, 1 insert). La transacción del usuario (o el contracting de CPQ) **no se cancela**.
 6. **Resultado:** el Contract muestra el número nuevo al refrescar. El update del Contract dispara los triggers de CPQ sobre Contract, pero no los nuestros (no hay trigger propio en Contract), así que no hay recursión.
 
 **Camino 2: el nocturno (el Scheduler despierta a las 2:00)**
@@ -265,7 +265,7 @@ if ( con.Active_Subscriptions__c != activeCount ) { ... contractToUpdateList.add
 - **Por qué así:** menos DML y no se disparan de gusto los triggers de CPQ sobre Contract. También corta cualquier posible ida y vuelta: si nada cambió, no hay update.
 
 **Bloque 6: `updateContracts`**
-- **Qué hace:** un solo `Database.update( lista, false )`. Recorre los resultados **por posición** (un resultado fallido no trae el Id) y guarda los errores con un solo insert.
+- **Qué hace:** un solo `Database.update( lista, false )` y después `ErrorLogUtil.saveLogsForFailedResults( resultList, contractToUpdateList, CLASS_NAME, 'Active Subscriptions recount failed: ' )`, que recorre los resultados **por posición** (un resultado fallido no trae el Id) y guarda cada error con un solo insert. Hasta el 05/10/2026 ese loop estaba copiado acá; se unificó en `ErrorLogUtil` (DRY, detalle en DEV2.md).
 - **Regla del training:** sin DML en loops, una sola DML por objeto, sin fallar en silencio (**Governor Limits, Módulo 3**). Mismo patrón que el DEV #1 y el DEV #2.
 
 ### `ActiveSubscriptionRecountBatch`
@@ -490,7 +490,7 @@ Corriendo el Batch una vez a mano después del deploy (backfill), con el mismo c
 |---|---|---|---|
 | `SubscriptionTrigger` | 8/8 | 100% | — |
 | `SubscriptionTriggerHandler` | 35/35 | 100% | — |
-| `ActiveSubscriptionCounter` | 48/50 | 96% | Líneas 151-152: arman el Error Log cuando **falla** el update de un Contract. Con datos normales de test no se puede hacer fallar ese update (mismo caso que `QuoteExpirationBatch` en el DEV #1). |
+| `ActiveSubscriptionCounter` | 45/45 | 100% | Desde el 05/10/2026 nada (antes: líneas 151-152, el Error Log cuando **falla** el update de un Contract; ese código se movió a `ErrorLogUtil` y se cubre ahí). |
 | `ActiveSubscriptionRecountBatch` | 8/8 | 100% | — |
 | `ActiveSubscriptionRecountScheduler` | 2/2 | 100% | — |
 
@@ -500,7 +500,7 @@ Corriendo el Batch una vez a mano después del deploy (backfill), con el mismo c
 |---|---|---|---|
 | SubscriptionTrigger | SubscriptionTriggerHandlerTest | 02/10/2026 | 100% |
 | SubscriptionTriggerHandler | SubscriptionTriggerHandlerTest | 02/10/2026 | 100% |
-| ActiveSubscriptionCounter | ActiveSubscriptionCounterTest (+ SubscriptionTriggerHandlerTest, ActiveSubscriptionRecountBatchTest) | 02/10/2026 | 96% |
+| ActiveSubscriptionCounter | ActiveSubscriptionCounterTest (+ SubscriptionTriggerHandlerTest, ActiveSubscriptionRecountBatchTest) | 05/10/2026 | 100% |
 | ActiveSubscriptionRecountBatch | ActiveSubscriptionRecountBatchTest | 02/10/2026 | 100% |
 | ActiveSubscriptionRecountScheduler | ActiveSubscriptionRecountSchedulerTest | 02/10/2026 | 100% |
 
@@ -508,7 +508,7 @@ Corriendo el Batch una vez a mano después del deploy (backfill), con el mismo c
 
 ## 10. Limitaciones conocidas y pendientes de QA
 
-1. **Rama de error sin cubrir** (líneas 151-152 de `ActiveSubscriptionCounter`), ver sección 9.
+1. ~~**Rama de error sin cubrir** (líneas 151-152 de `ActiveSubscriptionCounter`)~~ ✅ **Resuelto el 05/10/2026:** el registro de errores se movió a `ErrorLogUtil.saveLogsForFailedResults` y la clase quedó al 100%.
 2. **El número puede estar desactualizado hasta las 2:00** cuando una Subscription empieza o vence por fecha, o cuando cambian las fechas del Contract. Es el costo de no tener un trigger en Contract: se corrige cada noche.
 3. **Convivencia con CPQ en vivo:** los Amendments de prueba se hicieron **antes** de deployar el trigger (el número vino del backfill). Falta ver el trigger corriendo dentro del contracting de CPQ → **QA-DEV4-01**.
 4. **Baja total por Amendment (a 0):** no se probó en el org si CPQ completa `SBQQ__TerminatedDate__c` → **QA-DEV4-02**. El código funciona en los dos casos.

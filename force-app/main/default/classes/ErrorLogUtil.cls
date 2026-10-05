@@ -2,6 +2,8 @@
  * @description Utility class to record errors in the Error_Log__c object.
  *              It is used in two steps: first each log is built with buildLog (inside the loop,
  *              no DML) and at the end all of them are saved together with saveLogs (one insert).
+ *              saveLogsForFailedResults does both steps for the failed records of a
+ *              Database.update / Database.insert with allOrNone = false.
  */
 public with sharing class ErrorLogUtil {
 
@@ -33,5 +35,32 @@ public with sharing class ErrorLogUtil {
             return;
         }
         Database.insert( errorLogList, AccessLevel.SYSTEM_MODE );
+    }
+
+    /**
+     * @description Saves one log for EACH error of each record that could not be saved by a
+     *              Database.update( list, false ) (or insert), with its StatusCode. Used by
+     *              OrderActivationQueueable, ActiveSubscriptionCounter and RenewalQuoteBatch, so
+     *              the "SaveResult -> Error Log" loop lives in a single place (DRY).
+     *              The results come back in the same order as the records, and a failed result
+     *              has no Id, so the record is found by position (i).
+     *              All the logs are saved with a single insert.
+     * @param saveResultList Results of Database.update / Database.insert
+     * @param recordList     Records that were sent to save (in the same order as saveResultList)
+     * @param className      Apex class where the error happened
+     * @param messagePrefix  Text that explains which operation failed (for example 'Order activation failed: ')
+     */
+    public static void saveLogsForFailedResults( List<Database.SaveResult> saveResultList, List<SObject> recordList, String className, String messagePrefix ) {
+        List<Error_Log__c> errorLogList = new List<Error_Log__c>();
+        for ( Integer i = 0; i < saveResultList.size(); i++ ) {
+            if ( saveResultList[i].isSuccess() ) {
+                continue;
+            }
+            for ( Database.Error error : saveResultList[i].getErrors() ) {
+                errorLogList.add( buildLog( className, recordList[i].Id,
+                    messagePrefix + String.valueOf( error.getStatusCode() ) + ' - ' + error.getMessage() ) );
+            }
+        }
+        saveLogs( errorLogList );
     }
 }

@@ -28,11 +28,11 @@
 | `OrderTrigger` | Apex Trigger | Único trigger de Order, sin lógica. `before update` y `after insert`. |
 | `OrderTriggerHandler` | Apex Class | Métodos de entrada por contexto + lógica `private static`. |
 | `OrderActivationQueueable` | Apex Class (Queueable) | Activación diferida para Orders que **nacen** listas. |
-| `ErrorLogUtil` | Apex Class | Arma logs en memoria (`buildLog`) y los guarda con un solo insert (`saveLogs`). |
+| `ErrorLogUtil` | Apex Class | Arma logs en memoria (`buildLog`), los guarda con un solo insert (`saveLogs`) y registra los registros fallidos de un DML parcial (`saveLogsForFailedResults`). |
 | `Error_Log__c` | Custom Object | Class Name, Record Id y Error Message. Con tab, layout y list view. |
 | `Error_Log_Access` | Permission Set | Lectura de `Error_Log__c`. |
 | `TestDataFactory` | Test utility | Datos de prueba compartidos (DRY). |
-| `OrderTriggerHandlerTest`, `ErrorLogUtilTest` | Test Classes | 13 tests. |
+| `OrderTriggerHandlerTest`, `ErrorLogUtilTest` | Test Classes | 15 tests (11 + 4; 2 de `ErrorLogUtilTest` agregados el 05/10/2026). |
 
 ### El problema central
 
@@ -97,7 +97,7 @@ Salesforce **no permite activar una Order sin Order Products**, y CPQ inserta **
    - Vuelve a consultar las Orders (siguen en Draft, siguen listas y tienen productos).
    - Les pone `Status = 'Activated'`.
    - Hace `Database.update( lista, false )`.
-5. **`logFailures`**: si alguna falló, guarda el error en `Error_Log__c`.
+5. **`ErrorLogUtil.saveLogsForFailedResults`**: si alguna falló, guarda cada error (con su StatusCode) en `Error_Log__c`.
 6. Desde acá sigue igual que los pasos 6 y 7 del camino real.
 
 ---
@@ -178,13 +178,35 @@ SELECT Id, ( SELECT Id FROM OrderItems LIMIT 1 ) FROM Order WHERE Id IN :orderId
   - Hace `Database.update( lista, false )`.
 - **Por qué así:** trabaja con datos frescos. El `false` hace que, si una Order falla, las demás se activen igual.
 
-**Bloque 3: `logFailures`**
-- **Qué hace:** recorre los resultados **por posición** (`i`). Un `SaveResult` fallido no trae Id, así que la Order se busca en la misma posición de la lista. Arma los logs y los guarda con **un** insert.
-- **Por qué así:** es el `try / catch` "sin fallar en silencio" del **Módulo 3**, aplicado a un DML parcial.
+**Bloque 3: registro de errores**
+- **Qué hace:** `ErrorLogUtil.saveLogsForFailedResults( saveResultList, orderToActivateList, CLASS_NAME, 'Order activation failed: ' )`. Recorre los resultados **por posición** (`i`): un `SaveResult` fallido no trae Id, así que la Order se busca en la misma posición de la lista. Guarda un log por cada error, con su StatusCode, con **un** insert.
+- **Por qué así:** es el "sin fallar en silencio" del **Módulo 3**, aplicado a un DML parcial. Hasta el 05/10/2026 era un método privado `logFailures` en esta clase; se movió a `ErrorLogUtil` porque el mismo loop estaba copiado en el DEV #3 y el DEV #4 (DRY, ver la sección de `ErrorLogUtil`).
 
 ### `ErrorLogUtil`
 - **`buildLog`:** arma un `Error_Log__c` en memoria, sin DML. Se usa dentro de los loops.
 - **`saveLogs`:** guarda todos los logs con un solo insert, en `AccessLevel.SYSTEM_MODE`. El log es un registro del sistema y tiene que guardarse aunque el usuario no tenga permisos sobre el objeto. Si la lista está vacía, no hace nada.
+- **`saveLogsForFailedResults( saveResultList, recordList, className, messagePrefix )`** (agregado el 05/10/2026, revisión de calidad): recibe los resultados de un `Database.update( lista, false )` y guarda **un log por cada error** de cada registro que falló, con el formato `prefijo + StatusCode + ' - ' + mensaje`. Lo usan `OrderActivationQueueable`, `ActiveSubscriptionCounter` (DEV #4) y `RenewalQuoteBatch` (DEV #3).
+
+#### Por qué `saveLogsForFailedResults` (DRY)
+- **El problema:** el mismo loop "SaveResult → Error Log" estaba copiado en 3 clases, y encima con criterios distintos: el Queueable registraba **todos** los errores con su StatusCode, y las otras dos solo el **primero**, sin StatusCode. DRY es un criterio explícito del Code Review.
+- **El diseño:** un método en la clase utilitaria que ya era dueña del logging. Recibe:
+  - `saveResultList`: los resultados del DML.
+  - `recordList` (`List<SObject>`): un `SaveResult` fallido **no trae Id**, así que el registro se busca en la misma posición `i` de la lista. `SObject` es el tipo base de cualquier registro (sirve para Order, Contract y Opportunity); no es un genérico.
+  - `className`: va al campo `Class_Name__c`.
+  - `messagePrefix`: dice **qué operación** falló (por ejemplo `'Order activation failed: '`). Es el "método de origen": `Error_Log__c` no tiene un campo para el método, así que viaja en el mensaje.
+- **Registra todos los errores con StatusCode** (criterio del Queueable): un registro puede fallar por más de un motivo, y el StatusCode (`REQUIRED_FIELD_MISSING`, `FIELD_CUSTOM_VALIDATION_EXCEPTION`, etc.) dice el tipo de error sin tener que interpretar el texto.
+- **Guarda adentro (1 insert)**: cada clase queda con una sola línea y no se puede "olvidar" de llamar a `saveLogs`.
+
+| Alternativa descartada | Por qué no |
+|---|---|
+| Dejar las 3 copias | No es DRY: un cambio en el formato del log habría que hacerlo en 3 lugares, y ya se habían desalineado (todos los errores vs. el primero). |
+| Un campo nuevo `Method_Name__c` en `Error_Log__c` | Es IC nuevo y un campo más que mantener. El prefijo del mensaje ya dice qué operación falló. |
+| Un método que solo **arme** la lista (`buildLogs…`) y que cada clase llame a `saveLogs` | Dos líneas repetidas en 3 lugares para el mismo resultado; si alguien se olvida del `saveLogs`, los errores se pierden en silencio. |
+| Mantener "solo el primer error" | Pierde información. Se eligió el criterio más completo, el que ya usaba el Queueable. |
+
+- **Qué pasaría con la otra opción:** con un `build` + `save` separados, `RenewalQuoteBatch` podría juntar los logs de sus 2 updates en un solo insert. Hoy hace como máximo 2 inserts por tanda (igual que antes del cambio), que está muy lejos del límite de 150 DML.
+- **Tests:** no cambió ningún test existente (el test del Queueable mira clase, Id y cantidad de logs, y eso es igual). Se agregaron 2 en `ErrorLogUtilTest`: `saveLogsForFailedResultsTest` (un update real que falla, una Account sin Name → 1 log con Id, prefijo y `REQUIRED_FIELD_MISSING`) y `saveLogsForFailedResultsAllSuccessTest` (todo sale bien → 0 logs).
+- **Efecto en la cobertura:** las ramas de error que no se podían cubrir en `ActiveSubscriptionCounter` y `RenewalQuoteBatch` ahora viven en `ErrorLogUtil`, que sí se cubre con un update fallido real. `ActiveSubscriptionCounter` pasó de 96% a **100%**, `RenewalQuoteBatch` de 91% a **95%** y el org de 96% a **97%**.
 
 ### `TestDataFactory` (lo que usa el DEV #2)
 - `createAccount`, `createPricebookEntry`, `createDraftContract`, `buildOrders` y `buildOrderItems`.
@@ -290,7 +312,7 @@ El log es un registro del sistema, no del usuario. Si el usuario que disparó el
 | OrderTrigger | OrderTriggerHandlerTest | 02/10/2026 | 100% |
 | OrderTriggerHandler | OrderTriggerHandlerTest | 02/10/2026 | 100% |
 | OrderActivationQueueable | OrderTriggerHandlerTest | 02/10/2026 | 100% |
-| ErrorLogUtil | ErrorLogUtilTest | 02/10/2026 | 100% |
+| ErrorLogUtil | ErrorLogUtilTest (4 tests) | 05/10/2026 | 100% |
 
 ---
 

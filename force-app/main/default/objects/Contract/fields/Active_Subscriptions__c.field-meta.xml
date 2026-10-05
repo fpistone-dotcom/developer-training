@@ -2,9 +2,9 @@
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Active_Subscriptions__c</fullName>
     <defaultValue>0</defaultValue>
-    <description>DEV #4. Cantidad de Subscriptions activas hoy en este Contract. Lo calculan SubscriptionTrigger (al crear, editar, borrar o recuperar una Subscription) y ActiveSubscriptionRecountBatch (todas las noches a las 2:00). Las revisiones de un Amendment no suman: cuenta una por Subscription original con cantidad neta mayor a 0.</description>
+    <description>DEV #4. Number of Subscriptions active today on this Contract. Calculated by SubscriptionTrigger (when a Subscription is created, edited, deleted or restored) and ActiveSubscriptionRecountBatch (every night at 2:00). Amendment revisions do not add up: it counts one per original Subscription with a net quantity greater than 0.</description>
     <externalId>false</externalId>
-    <inlineHelpText>Subscriptions vigentes hoy (ya empezaron, no vencieron y no fueron terminadas). Los Amendments cambian la cantidad de una Subscription, no suman Subscriptions nuevas. Se actualiza automáticamente.</inlineHelpText>
+    <inlineHelpText>Subscriptions in force today (already started, not ended and not terminated). Amendments change the quantity of a Subscription, they do not add new Subscriptions. Updated automatically.</inlineHelpText>
     <label>Active Subscriptions</label>
     <precision>18</precision>
     <required>false</required>

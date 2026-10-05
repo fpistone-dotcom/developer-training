@@ -4,7 +4,7 @@
         <apexClass>QuoteProgressController</apexClass>
         <enabled>true</enabled>
     </classAccesses>
-    <description>DEV #5. Permite ejecutar QuoteProgressController, la clase Apex del componente Quote Progress de la Quote.</description>
+    <description>DEV #5. Gives access to run QuoteProgressController, the Apex class of the Quote Progress component on the Quote.</description>
     <hasActivationRequired>false</hasActivationRequired>
     <label>Quote Progress Access</label>
 </PermissionSet>

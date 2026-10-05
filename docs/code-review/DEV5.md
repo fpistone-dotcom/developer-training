@@ -463,6 +463,8 @@ Mostrar el test `quoteNotFoundTest`. En la UI no se puede abrir una Quote borrad
 
 ### D) Cobertura TOTAL del org: los 5 DEV superan el 85%
 
+**Actualizada el 05/10/2026, 20:02 UTC (Test Run `707fj000016kkZU`), después de la revisión de calidad:** 85 métodos de test, 85 pasan (Salesforce informa 94). **Org: 97%.**
+
 | DEV | Clase / Trigger | Cobertura | Sin cubrir y por qué |
 |---|---|---|---|
 | #2 | `OrderTrigger` | 100% | — |
@@ -475,16 +477,16 @@ Mostrar el test `quoteNotFoundTest`. En la UI no se puede abrir una Quote borrad
 | #1 | `QuoteExpirationScheduler` | 100% | — |
 | #4 | `SubscriptionTrigger` | 100% | — |
 | #4 | `SubscriptionTriggerHandler` | 100% | — |
-| #4 | `ActiveSubscriptionCounter` | 96% | 151-152 (Error Log cuando falla el update de un Contract). |
+| #4 | `ActiveSubscriptionCounter` | 100% | — (el Error Log se movió a `ErrorLogUtil`). |
 | #4 | `ActiveSubscriptionRecountBatch` | 100% | — |
 | #4 | `ActiveSubscriptionRecountScheduler` | 100% | — |
 | #3 | `ContractTrigger` | 100% | — |
 | #3 | `ContractTriggerHandler` | 100% | — |
-| #3 | `RenewalQuoteBatch` | 91% | 123, 139, 156-157 (ramas de error y de seguridad: updates fallidos, sin Opportunity en Prospecting). |
+| #3 | `RenewalQuoteBatch` | 95% | 123, 139 (`return` de seguridad: todos los updates fallan, o no hay Opportunity en Prospecting). |
 | #3 | `RenewalQuoteScheduler` | 100% | — |
 | #5 | `QuoteProgressController` | 100% | — |
 
-**Mínimo por clase: 91%. Org: 96%.** Todas superan el 85%. Lo único sin cubrir son **ramas de error** que no se pueden provocar con datos de test (un DML, un recall o un email que falla), y todas registran en `Error_Log__c`.
+**Mínimo por clase: 91%. Org: 97%.** Todas superan el 85%. Lo único sin cubrir son **ramas de error** que no se pueden provocar con datos de test (un recall o un email que falla, o un update que falla para todos los registros), y todas registran en `Error_Log__c`.
 
 ### Build Tracker (DEV #5)
 

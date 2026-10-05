@@ -23,6 +23,8 @@ private class ActiveSubscriptionRecountSchedulerTest {
         Test.stopTest(); // the Scheduler execute() runs here
 
         CronTrigger scheduledJob = [SELECT CronExpression FROM CronTrigger WHERE Id = :jobId];
+        // Literal value on purpose: comparing against CRON_EXPRESSION would compare the constant
+        // with itself and would not detect a wrong cron in the class
         System.assertEquals( '0 0 2 * * ?', scheduledJob.CronExpression,
             'The job should be scheduled for every night at 2:00' );
 

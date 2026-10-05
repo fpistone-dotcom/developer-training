@@ -109,7 +109,7 @@ Además, el debug log mostró que CPQ inserta **otra** Renewal Quote en cada pas
 | **`== true` al leer el flag subiendo dos lookups** | Si la Opportunity no tiene Contract, el valor llega `null`, y `null == true` es false: no se manda email. | **`if ( flag )`:** con `null` tira una excepción en tiempo de ejecución. |
 | **`orgUrl` calculado una vez, afuera del loop** | Es el mismo para todas las Quotes. | **Adentro del loop:** el mismo resultado, calculado N veces sin necesidad. |
 | **`setSaveAsActivity( false )`** | Salesforce lo **exige** cuando el destinatario es un User (`setTargetObjectId`). | **`true`:** el envío falla con un error. |
-| **`List<SObject>` en `saveLogsForFailures`** | Sirve para Contracts y Opportunities (DRY). `SObject` es el tipo base de cualquier registro, no es un genérico. | **Dos métodos casi iguales** (uno por objeto): código duplicado. |
+| **Errores con `ErrorLogUtil.saveLogsForFailedResults`** (antes `saveLogsForFailures`, privado de esta clase) | El mismo método para Contracts y Opportunities, y el mismo que usan el DEV #2 y el DEV #4 (DRY). Recibe `List<SObject>` (tipo base de cualquier registro, no es un genérico) y registra cada error con su StatusCode. Se movió a `ErrorLogUtil` el 05/10/2026; detalle en DEV2.md, sección `ErrorLogUtil`. | **Dos métodos casi iguales** (uno por objeto) o **una copia por clase**: código duplicado. |
 
 ---
 
@@ -150,8 +150,8 @@ SmartBytes le vende a Burlington **125 Monthly Named Users** por 12 meses: del *
 3. Salesforce llama a **`execute`** una vez por Contract (cada uno con sus propios límites):
    - a. → **`requestRenewalQuotes`**: `SBQQ__RenewalForecast__c = true` (red de seguridad) y `SBQQ__RenewalQuoted__c = true` → **1 DML** `Database.update( lista, false )`.
      - Dentro de ese update: `ContractTrigger` no hace nada (el Status no cambió) → **`SBQQ.ContractAfter`** crea la **Renewal Quote** → se dispara el **Camino 3** (email) → CPQ encola su Queueable de cálculo.
-     - Devuelve el Set de Contracts que se guardaron bien. Los que fallaron → `saveLogsForFailures` → `Error_Log__c`.
-   - b. → **`updateRenewalOpportunityStage`**: si el Set está vacío → `return`. Si no, **1 SOQL** (Opportunities con `SBQQ__RenewedContract__c` en el Set y `StageName = 'Prospecting'`) → `StageName = 'Proposal/Price Quote'` → **1 DML**. Errores → `saveLogsForFailures`.
+     - Devuelve el Set de Contracts que se guardaron bien. Los que fallaron → `ErrorLogUtil.saveLogsForFailedResults` → `Error_Log__c`.
+   - b. → **`updateRenewalOpportunityStage`**: si el Set está vacío → `return`. Si no, **1 SOQL** (Opportunities con `SBQQ__RenewedContract__c` en el Set y `StageName = 'Prospecting'`) → `StageName = 'Proposal/Price Quote'` → **1 DML**. Errores → `ErrorLogUtil.saveLogsForFailedResults`.
 4. → **`finish`**: no hace nada.
 
 **Camino 3: email (Parte 3)**
@@ -244,9 +244,9 @@ for ( Opportunity opp : [
 - **Qué hace:** Req E. Usa el campo `SBQQ__RenewedContract__c` (lo completa CPQ) para encontrar la Renewal Opportunity.
 - **Regla del training:** condicional antes de la SOQL, `Set<Id>` para bulkificar, for con SOQL, una sola DML (**Governor Limits, Módulo 1**).
 
-**Bloque 5: `saveLogsForFailures`**
-- **Qué hace:** recorre los `SaveResult` por posición (un resultado fallido no trae el Id) y guarda los Error Logs con un solo insert.
-- **Por qué así:** lo usan los dos updates (**DRY**). Recibe `List<SObject>` (el tipo base de cualquier registro, no es un genérico) para servir para Contracts y Opportunities.
+**Bloque 5: registro de errores (`ErrorLogUtil.saveLogsForFailedResults`)**
+- **Qué hace:** después de cada `Database.update( lista, false )`, una línea: `ErrorLogUtil.saveLogsForFailedResults( resultList, lista, CLASS_NAME, 'Renewal Quote request failed: ' )` (o `'Renewal Opportunity stage update failed: '`). Recorre los `SaveResult` por posición (un resultado fallido no trae el Id) y guarda un Error Log por cada error, con su StatusCode, en un solo insert.
+- **Por qué así:** **DRY**. Hasta el 05/10/2026 era un método privado `saveLogsForFailures` de este Batch, casi igual al del DEV #2 y el DEV #4; se unificó en `ErrorLogUtil` (detalle en DEV2.md).
 
 **Bloque 6: `finish`** vacío, porque la interfaz lo exige.
 - **Regla del training:** Batch para volumen (**Módulo 4**). Sin `Database.Stateful`.
@@ -560,7 +560,7 @@ Por DRY: el valor `'Activated'` tiene que estar definido en un solo lugar. Si el
 |---|---|---|---|
 | `ContractTrigger` | 2/2 | 100% | — |
 | `ContractTriggerHandler` | 8/8 | 100% | — |
-| `RenewalQuoteBatch` | 40/44 | 91% | **123:** `return` cuando **todos** los updates de Contract fallan. **139:** `return` de seguridad cuando no hay ninguna Opportunity en Prospecting (en los tests CPQ siempre crea una al activar). **156-157:** arman el Error Log cuando falla un update. Con datos normales de test no se puede hacer fallar el update (mismo caso que el DEV #1 y el DEV #4). |
+| `RenewalQuoteBatch` | 35/37 | 95% | **123:** `return` cuando **todos** los updates de Contract fallan. **139:** `return` de seguridad cuando no hay ninguna Opportunity en Prospecting (en los tests CPQ siempre crea una al activar). Hasta el 05/10/2026 también quedaban sin cubrir las líneas que armaban el Error Log; ahora ese código vive en `ErrorLogUtil` y se cubre en `ErrorLogUtilTest`. |
 | `RenewalQuoteScheduler` | 3/3 | 100% | — |
 | `QuoteTrigger` | 6/6 | 100% | — |
 | `QuoteTriggerHandler` | 64/70 | 91% | **205-206:** Error Log cuando falla un email individual. **209-213:** el `catch` (por ejemplo, Deliverability apagado). En un test no se puede hacer fallar `Messaging.sendEmail`. |
@@ -580,7 +580,7 @@ Por DRY: el valor `'Activated'` tiene que estar definido en un solo lugar. Si el
 
 ## 10. Limitaciones conocidas y pendientes de QA
 
-1. **Ramas de error sin cubrir** (`RenewalQuoteBatch` 123, 139, 156-157; `QuoteTriggerHandler` 205-206, 209-213). Ver sección 9.
+1. **Ramas de error sin cubrir** (`RenewalQuoteBatch` 123, 139; `QuoteTriggerHandler` 205-206, 209-213). Ver sección 9.
 2. **Activación masiva:** activar muchos Contracts en una sola transacción (por ejemplo, 200 con Data Loader) falla con `SBQQ: Too many SOQL queries`, **por el código de CPQ**, no por el nuestro. Recomendación: activar en tandas chicas (Data Loader con batch size bajo).
 3. **Hasta 1 día de demora:** un Contract que se activa con menos de 30 días por delante recibe su Renewal Quote la noche siguiente.
 4. **Contracts vencidos** (EndDate < hoy) no reciben Renewal Quote automática.
