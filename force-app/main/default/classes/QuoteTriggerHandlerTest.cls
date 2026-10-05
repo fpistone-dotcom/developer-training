@@ -1,16 +1,17 @@
 /**
- * @description Tests del DEV #1 (Parte A): QuoteTrigger y QuoteTriggerHandler.
- *              Cubre casos positivos, negativos y bulk (200 registros) de los dos caminos:
- *              - Update: el Status pasa a Approved (es lo que hace el Approval Process).
- *              - Insert: la Quote se crea ya aprobada.
+ * @description Tests for DEV #1 (Part A): QuoteTrigger and QuoteTriggerHandler.
+ *              Covers positive, negative and bulk (200 records) cases of both paths:
+ *              - Update: the Status changes to Approved (that is what the Approval Process does).
+ *              - Insert: the Quote is created already approved.
+ *              It also covers DEV #3 (Part 3): the email to the Owner of a new Renewal Quote.
  *
- *              Todas las Quotes nacen con un vencimiento "original" de hoy + 5, distinto del
- *              que pone nuestro trigger (hoy + 30). Así se ve si el trigger lo pisó o no:
- *              el default de CPQ (30 días desde la creación) coincide con hoy + 30 y no
- *              serviría para distinguirlo.
+ *              All the Quotes are created with an "original" expiration of today + 5, different
+ *              from the one our trigger sets (today + 30). That way we can see whether the trigger
+ *              overrode it or not: the CPQ default (30 days from creation) matches today + 30 and
+ *              would not help to tell them apart.
  *
- *              En un test no se puede correr el Approval Process real: se cambia el Status
- *              a mano, que es exactamente lo que hace su field update Set_Quote_Status_Approved.
+ *              The real Approval Process cannot run in this test: the Status is changed manually,
+ *              which is exactly what its Set_Quote_Status_Approved field update does.
  */
 @IsTest
 private class QuoteTriggerHandlerTest {
@@ -20,7 +21,7 @@ private class QuoteTriggerHandlerTest {
     private static final Date EXPECTED_EXPIRATION_DATE = Date.today().addDays( QuoteTriggerHandler.DAYS_UNTIL_EXPIRATION );
 
     /**
-     * @description Datos comunes para todos los tests: una Account.
+     * @description Common data for all the tests: an Account.
      */
     @testSetup
     static void setup() {
@@ -28,11 +29,11 @@ private class QuoteTriggerHandlerTest {
     }
 
     // ---------------------------------------------------------------------------------
-    // Camino UPDATE
+    // UPDATE path
     // ---------------------------------------------------------------------------------
 
     /**
-     * @description Positivo: una Quote en Draft que pasa a Approved vence en hoy + 30.
+     * @description Positive: a Draft Quote that changes to Approved expires on today + 30.
      */
     @isTest
     static void setExpirationOnApproveTest() {
@@ -45,11 +46,11 @@ private class QuoteTriggerHandlerTest {
 
         SBQQ__Quote__c result = getQuote( quoteList[0].Id );
         System.assertEquals( EXPECTED_EXPIRATION_DATE, result.SBQQ__ExpirationDate__c,
-            'Al aprobarse, la Quote debería vencer en hoy + 30 días' );
+            'When approved, the Quote should expire on today + 30 days' );
     }
 
     /**
-     * @description Bulk: 200 Quotes aprobadas juntas vencen todas en hoy + 30.
+     * @description Bulk: 200 Quotes approved together all expire on today + 30.
      */
     @isTest
     static void setExpirationOnApproveBulkTest() {
@@ -67,11 +68,11 @@ private class QuoteTriggerHandlerTest {
             FROM SBQQ__Quote__c
             WHERE SBQQ__ExpirationDate__c = :EXPECTED_EXPIRATION_DATE
         ];
-        System.assertEquals( BULK_SIZE, updatedCount, 'Las 200 Quotes aprobadas deberían vencer en hoy + 30 días' );
+        System.assertEquals( BULK_SIZE, updatedCount, 'The 200 approved Quotes should expire on today + 30 days' );
     }
 
     /**
-     * @description Negativo: si el Status pasa a otro valor (In Review), el vencimiento no cambia.
+     * @description Negative: if the Status changes to another value (In Review), the expiration does not change.
      */
     @isTest
     static void notSetOnOtherStatusTest() {
@@ -84,12 +85,12 @@ private class QuoteTriggerHandlerTest {
 
         SBQQ__Quote__c result = getQuote( quoteList[0].Id );
         System.assertEquals( ORIGINAL_EXPIRATION_DATE, result.SBQQ__ExpirationDate__c,
-            'Si la Quote no se aprueba, el vencimiento no debería cambiar' );
+            'If the Quote is not approved, the expiration should not change' );
     }
 
     /**
-     * @description Negativo: si la Quote ya estaba aprobada y se edita otra cosa (acá, el
-     *              propio vencimiento), el trigger no lo vuelve a calcular.
+     * @description Negative: if the Quote was already approved and something else is edited (here, the
+     *              expiration itself), the trigger does not recalculate it.
      */
     @isTest
     static void notRecalculatedWhenAlreadyApprovedTest() {
@@ -103,12 +104,12 @@ private class QuoteTriggerHandlerTest {
 
         SBQQ__Quote__c result = getQuote( quoteList[0].Id );
         System.assertEquals( manualExpirationDate, result.SBQQ__ExpirationDate__c,
-            'Si el Status no cambió, el vencimiento no debería recalcularse' );
+            'If the Status did not change, the expiration should not be recalculated' );
     }
 
     /**
-     * @description Positivo: una Quote que vuelve a Draft (por ejemplo, después de un recall)
-     *              y se aprueba de nuevo recalcula el vencimiento desde la nueva aprobación.
+     * @description Positive: a Quote that goes back to Draft (for example, after a recall)
+     *              and is approved again recalculates the expiration from the new approval.
      */
     @isTest
     static void recalculatedOnReapprovalTest() {
@@ -124,15 +125,15 @@ private class QuoteTriggerHandlerTest {
 
         SBQQ__Quote__c result = getQuote( quoteList[0].Id );
         System.assertEquals( EXPECTED_EXPIRATION_DATE, result.SBQQ__ExpirationDate__c,
-            'Al volver a aprobarse, la Quote debería vencer en hoy + 30 días' );
+            'When approved again, the Quote should expire on today + 30 days' );
     }
 
     // ---------------------------------------------------------------------------------
-    // Camino INSERT
+    // INSERT path
     // ---------------------------------------------------------------------------------
 
     /**
-     * @description Positivo: una Quote que se crea ya aprobada vence en hoy + 30.
+     * @description Positive: a Quote created already approved expires on today + 30.
      */
     @isTest
     static void setExpirationOnInsertApprovedTest() {
@@ -142,11 +143,11 @@ private class QuoteTriggerHandlerTest {
 
         SBQQ__Quote__c result = getQuote( quoteList[0].Id );
         System.assertEquals( EXPECTED_EXPIRATION_DATE, result.SBQQ__ExpirationDate__c,
-            'Una Quote creada ya aprobada debería vencer en hoy + 30 días' );
+            'A Quote created already approved should expire on today + 30 days' );
     }
 
     /**
-     * @description Bulk: 200 Quotes creadas ya aprobadas vencen todas en hoy + 30.
+     * @description Bulk: 200 Quotes created already approved all expire on today + 30.
      */
     @isTest
     static void setExpirationOnInsertApprovedBulkTest() {
@@ -159,11 +160,11 @@ private class QuoteTriggerHandlerTest {
             FROM SBQQ__Quote__c
             WHERE SBQQ__ExpirationDate__c = :EXPECTED_EXPIRATION_DATE
         ];
-        System.assertEquals( BULK_SIZE, updatedCount, 'Las 200 Quotes creadas aprobadas deberían vencer en hoy + 30 días' );
+        System.assertEquals( BULK_SIZE, updatedCount, 'The 200 Quotes created approved should expire on today + 30 days' );
     }
 
     /**
-     * @description Negativo: una Quote que se crea en Draft conserva su vencimiento.
+     * @description Negative: a Quote created in Draft keeps its expiration.
      */
     @isTest
     static void notSetOnInsertNotApprovedTest() {
@@ -173,20 +174,20 @@ private class QuoteTriggerHandlerTest {
 
         SBQQ__Quote__c result = getQuote( quoteList[0].Id );
         System.assertEquals( ORIGINAL_EXPIRATION_DATE, result.SBQQ__ExpirationDate__c,
-            'Una Quote creada en Draft no debería cambiar su vencimiento' );
+            'A Quote created in Draft should not change its expiration' );
     }
 
     // ---------------------------------------------------------------------------------
-    // DEV #3 (Parte 3): email al Owner de una Renewal Quote nueva
+    // DEV #3 (Part 3): email to the Owner of a new Renewal Quote
     //
-    // En un test los emails no se envían de verdad, pero Salesforce cuenta las llamadas a
-    // Messaging.sendEmail. Limits.getEmailInvocations() se lee ANTES de Test.stopTest(),
-    // porque mide la transacción que está entre startTest y stopTest.
+    // In a test the emails are not really sent, but Salesforce counts the calls to
+    // Messaging.sendEmail. Limits.getEmailInvocations() is read BEFORE Test.stopTest(),
+    // because it measures the transaction between startTest and stopTest.
     // ---------------------------------------------------------------------------------
 
     /**
-     * @description Positivo: al crear una Renewal Quote pedida (Contract con Renewal Quoted
-     *              tildado) se manda el email, sin errores.
+     * @description Positive: creating a requested Renewal Quote (Contract with Renewal Quoted
+     *              checked) sends the email, with no errors.
      */
     @isTest
     static void renewalQuoteSendsEmailTest() {
@@ -197,13 +198,13 @@ private class QuoteTriggerHandlerTest {
         Integer emailInvocations = Limits.getEmailInvocations();
         Test.stopTest();
 
-        System.assertEquals( 1, emailInvocations, 'Una Renewal Quote nueva debería disparar un envío de email' );
-        System.assertEquals( 0, [SELECT COUNT() FROM Error_Log__c], 'El envío no debería generar errores' );
+        System.assertEquals( 1, emailInvocations, 'A new Renewal Quote should fire one email send' );
+        System.assertEquals( 0, [SELECT COUNT() FROM Error_Log__c], 'The send should not create errors' );
     }
 
     /**
-     * @description Bulk: 200 Renewal Quotes creadas juntas usan UN solo envío (con 200 emails),
-     *              no 200 (el límite es 10 envíos por transacción).
+     * @description Bulk: 200 Renewal Quotes created together use ONE single send (with 200 emails),
+     *              not 200 (the limit is 10 sends per transaction).
      */
     @isTest
     static void renewalQuoteBulkEmailTest() {
@@ -214,12 +215,12 @@ private class QuoteTriggerHandlerTest {
         Integer emailInvocations = Limits.getEmailInvocations();
         Test.stopTest();
 
-        System.assertEquals( 1, emailInvocations, 'Las 200 Renewal Quotes deberían enviarse en una sola llamada' );
-        System.assertEquals( 0, [SELECT COUNT() FROM Error_Log__c], 'El envío no debería generar errores' );
+        System.assertEquals( 1, emailInvocations, 'The 200 Renewal Quotes should be sent in a single call' );
+        System.assertEquals( 0, [SELECT COUNT() FROM Error_Log__c], 'The send should not create errors' );
     }
 
     /**
-     * @description Negativo: una Quote que no es Renewal no manda email.
+     * @description Negative: a Quote that is not a Renewal does not send an email.
      */
     @isTest
     static void nonRenewalQuoteNoEmailTest() {
@@ -228,13 +229,13 @@ private class QuoteTriggerHandlerTest {
         Integer emailInvocations = Limits.getEmailInvocations();
         Test.stopTest();
 
-        System.assertEquals( 0, emailInvocations, 'Una Quote que no es Renewal no debería mandar email' );
+        System.assertEquals( 0, emailInvocations, 'A Quote that is not a Renewal should not send an email' );
     }
 
     /**
-     * @description Negativo: una Renewal Quote cuyo Contract NO tiene Renewal Quoted tildado no
-     *              manda email. Es el caso de la Renewal Quote temporal que CPQ crea al activar
-     *              un Contract (para calcular la Renewal Opportunity) y borra segundos después.
+     * @description Negative: a Renewal Quote whose Contract does NOT have Renewal Quoted checked does not
+     *              send an email. This is the case of the temporary Renewal Quote that CPQ creates when
+     *              a Contract is activated (to calculate the Renewal Opportunity) and deletes seconds later.
      */
     @isTest
     static void renewalQuoteNotRequestedNoEmailTest() {
@@ -246,12 +247,12 @@ private class QuoteTriggerHandlerTest {
         Test.stopTest();
 
         System.assertEquals( 0, emailInvocations,
-            'Una Renewal Quote que nadie pidió (la temporal de CPQ) no debería mandar email' );
-        System.assertEquals( 0, [SELECT COUNT() FROM Error_Log__c], 'No debería haber errores' );
+            'A Renewal Quote nobody requested (the CPQ temporary one) should not send an email' );
+        System.assertEquals( 0, [SELECT COUNT() FROM Error_Log__c], 'There should be no errors' );
     }
 
     // ---------------------------------------------------------------------------------
-    // Métodos de ayuda
+    // Helper methods
     // ---------------------------------------------------------------------------------
 
     private static Id getAccountId() {
@@ -263,10 +264,10 @@ private class QuoteTriggerHandlerTest {
     }
 
     /**
-     * @description Inserta Quotes con el Status indicado y el vencimiento original (hoy + 5).
-     * @param numberOfQuotes Cantidad de Quotes
-     * @param status         Valor de SBQQ__Status__c
-     * @return Quotes insertadas
+     * @description Inserts Quotes with the given Status and the original expiration (today + 5).
+     * @param numberOfQuotes Number of Quotes
+     * @param status         Value of SBQQ__Status__c
+     * @return Inserted Quotes
      */
     private static List<SBQQ__Quote__c> insertQuotes( Integer numberOfQuotes, String status ) {
         List<SBQQ__Quote__c> quoteList = TestDataFactory.buildQuotes( getAccountId(), numberOfQuotes, status, ORIGINAL_EXPIRATION_DATE );
@@ -275,11 +276,11 @@ private class QuoteTriggerHandlerTest {
     }
 
     /**
-     * @description Crea un Contract y su Renewal Opportunity (como la que crea CPQ), con
-     *              SBQQ__RenewalQuoted__c en el valor indicado. Se llama ANTES de Test.startTest():
-     *              lo que haga CPQ al crear el Contract no cuenta en los límites que mide el test.
-     * @param renewalQuoted true = alguien pidió la Renewal Quote (el Batch o un usuario)
-     * @return Id de la Renewal Opportunity
+     * @description Creates a Contract and its Renewal Opportunity (like the one CPQ creates), with
+     *              SBQQ__RenewalQuoted__c set to the given value. It is called BEFORE Test.startTest():
+     *              whatever CPQ does when the Contract is created does not count in the limits the test measures.
+     * @param renewalQuoted true = someone requested the Renewal Quote (the Batch or a user)
+     * @return Id of the Renewal Opportunity
      */
     private static Id createRenewalOpportunity( Boolean renewalQuoted ) {
         Contract con = TestDataFactory.buildContracts( getAccountId(), Date.today(), 12, 1 )[0];
@@ -292,11 +293,11 @@ private class QuoteTriggerHandlerTest {
     }
 
     /**
-     * @description Inserta Quotes de tipo Renewal (como las que genera CPQ) en la Renewal
-     *              Opportunity indicada, con Owner = el usuario que corre el test.
-     * @param numberOfQuotes Cantidad de Quotes
-     * @param opportunityId  Renewal Opportunity de las Quotes
-     * @return Quotes insertadas
+     * @description Inserts Renewal type Quotes (like the ones CPQ generates) on the given Renewal
+     *              Opportunity, with Owner = the user running the test.
+     * @param numberOfQuotes Number of Quotes
+     * @param opportunityId  Renewal Opportunity of the Quotes
+     * @return Inserted Quotes
      */
     private static List<SBQQ__Quote__c> insertRenewalQuotes( Integer numberOfQuotes, Id opportunityId ) {
         List<SBQQ__Quote__c> quoteList = TestDataFactory.buildQuotes( getAccountId(), numberOfQuotes, 'Draft', ORIGINAL_EXPIRATION_DATE );

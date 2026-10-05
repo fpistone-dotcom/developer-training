@@ -1,18 +1,18 @@
 /**
- * @description Tests del DEV #5: QuoteProgressController (el controller del LWC quoteProgress).
- *              Cubre casos positivos, negativos y borde de cada uno de los 5 pasos, el orden y
- *              los textos de los pasos, la eficiencia (1 sola query) y la Quote no encontrada.
+ * @description Tests for DEV #5: QuoteProgressController (the controller of the quoteProgress LWC).
+ *              Covers positive, negative and edge cases for each of the 5 steps, the order and
+ *              the texts of the steps, the efficiency (only 1 query) and the Quote not found.
  *
- *              Sin test bulk de 200: el método recibe UNA Quote (una página muestra una sola).
- *              En su lugar, singleQueryTest verifica que use 1 sola SOQL.
+ *              No 200-record bulk test: the method receives ONE Quote (a page shows only one).
+ *              Instead, singleQueryTest checks that it uses only 1 SOQL.
  *
- *              El LWC no tiene tests propios (Jest no está en el training ni cuenta para la
- *              cobertura de Apex): se prueba en el org.
+ *              The LWC has no tests of its own (Jest is not part of the training and does not count
+ *              for Apex coverage): it is tested in the org.
  */
 @IsTest
 private class QuoteProgressControllerTest {
 
-    // Posición de cada paso en la lista que devuelve el controller
+    // Position of each step in the list the controller returns
     private static final Integer QUOTE_LINES_INDEX = 0;
     private static final Integer APPROVED_INDEX = 1;
     private static final Integer DOCUMENT_INDEX = 2;
@@ -24,7 +24,7 @@ private class QuoteProgressControllerTest {
     private static final String STAGE_CLOSED_WON = 'Closed Won';
 
     /**
-     * @description Datos comunes: una Account, una Opportunity abierta y un producto.
+     * @description Common data: an Account, an open Opportunity and a product.
      */
     @testSetup
     static void setup() {
@@ -34,12 +34,12 @@ private class QuoteProgressControllerTest {
     }
 
     // ---------------------------------------------------------------------------------
-    // Todos los pasos
+    // All the steps
     // ---------------------------------------------------------------------------------
 
     /**
-     * @description Negativo: una Quote recién creada (Draft, sin líneas, sin documento,
-     *              Opportunity abierta, no Ordered) tiene los 5 pasos en rojo.
+     * @description Negative: a newly created Quote (Draft, no lines, no document,
+     *              open Opportunity, not Ordered) has all 5 steps in red.
      */
     @isTest
     static void newQuoteAllStepsPendingTest() {
@@ -49,15 +49,15 @@ private class QuoteProgressControllerTest {
         List<QuoteProgressController.ProgressStep> stepList = QuoteProgressController.getProgressSteps( quote.Id );
         Test.stopTest();
 
-        System.assertEquals( NUMBER_OF_STEPS, stepList.size(), 'Siempre se devuelven los 5 pasos' );
+        System.assertEquals( NUMBER_OF_STEPS, stepList.size(), 'The 5 steps are always returned' );
         for ( QuoteProgressController.ProgressStep step : stepList ) {
-            System.assertEquals( false, step.isDone, 'En una Quote nueva el paso "' + step.label + '" debería estar en rojo' );
+            System.assertEquals( false, step.isDone, 'In a new Quote the step "' + step.label + '" should be red' );
         }
     }
 
     /**
-     * @description Positivo: Quote con líneas, aprobada, con documento, Opportunity Closed Won
-     *              y Ordered tiene los 5 pasos en verde.
+     * @description Positive: a Quote with lines, approved, with a document, Opportunity Closed Won
+     *              and Ordered has all 5 steps in green.
      */
     @isTest
     static void allStepsCompletedTest() {
@@ -65,10 +65,10 @@ private class QuoteProgressControllerTest {
         SBQQ__Quote__c quote = insertQuote( wonOpportunity.Id, 'Approved' );
         insert TestDataFactory.buildQuoteLines( quote.Id, getProductId(), 1 );
         insert TestDataFactory.buildQuoteDocument( quote.Id, wonOpportunity.Id );
-        // Solo para armar el dato: al tildar Ordered, CPQ intenta crear la Order real (exige
-        // Primary, Pricebook, PricebookEntry...) y dispara toda la cadena del Req #31, que no es
-        // parte del DEV #5 (se probó en el org en el DEV #2). Apagamos los triggers de CPQ solo
-        // durante este update y los volvemos a prender: el controller corre con CPQ prendido.
+        // Only to set up the data: when Ordered is checked, CPQ tries to create the real Order (it
+        // requires Primary, Pricebook, PricebookEntry...) and fires the whole Req #31 chain, which is
+        // not part of DEV #5 (it was tested in the org in DEV #2). We turn off the CPQ triggers only
+        // during this update and turn them back on: the controller runs with CPQ turned on.
         SBQQ.TriggerControl.disable();
         quote.SBQQ__Ordered__c = true;
         update quote;
@@ -79,12 +79,12 @@ private class QuoteProgressControllerTest {
         Test.stopTest();
 
         for ( QuoteProgressController.ProgressStep step : stepList ) {
-            System.assertEquals( true, step.isDone, 'Con todo completo, el paso "' + step.label + '" debería estar en verde' );
+            System.assertEquals( true, step.isDone, 'With everything done, the step "' + step.label + '" should be green' );
         }
     }
 
     /**
-     * @description Positivo: los pasos vienen en el orden del requirement y con sus textos.
+     * @description Positive: the steps come in the order of the requirement and with their texts.
      */
     @isTest
     static void stepsOrderAndLabelsTest() {
@@ -94,19 +94,19 @@ private class QuoteProgressControllerTest {
         List<QuoteProgressController.ProgressStep> stepList = QuoteProgressController.getProgressSteps( quote.Id );
         Test.stopTest();
 
-        System.assertEquals( QuoteProgressController.STEP_QUOTE_LINES, stepList[QUOTE_LINES_INDEX].label, 'El paso 1 debería ser Quote Lines Added' );
-        System.assertEquals( QuoteProgressController.STEP_APPROVED, stepList[APPROVED_INDEX].label, 'El paso 2 debería ser Quote Approved' );
-        System.assertEquals( QuoteProgressController.STEP_DOCUMENT, stepList[DOCUMENT_INDEX].label, 'El paso 3 debería ser Quote Document Created' );
-        System.assertEquals( QuoteProgressController.STEP_CLOSED_WON, stepList[CLOSED_WON_INDEX].label, 'El paso 4 debería ser Opportunity Closed Won' );
-        System.assertEquals( QuoteProgressController.STEP_ORDERED, stepList[ORDERED_INDEX].label, 'El paso 5 debería ser Quote Ordered' );
+        System.assertEquals( QuoteProgressController.STEP_QUOTE_LINES, stepList[QUOTE_LINES_INDEX].label, 'Step 1 should be Quote Lines Added' );
+        System.assertEquals( QuoteProgressController.STEP_APPROVED, stepList[APPROVED_INDEX].label, 'Step 2 should be Quote Approved' );
+        System.assertEquals( QuoteProgressController.STEP_DOCUMENT, stepList[DOCUMENT_INDEX].label, 'Step 3 should be Quote Document Created' );
+        System.assertEquals( QuoteProgressController.STEP_CLOSED_WON, stepList[CLOSED_WON_INDEX].label, 'Step 4 should be Opportunity Closed Won' );
+        System.assertEquals( QuoteProgressController.STEP_ORDERED, stepList[ORDERED_INDEX].label, 'Step 5 should be Quote Ordered' );
     }
 
     // ---------------------------------------------------------------------------------
-    // Un paso por vez (los pasos son independientes)
+    // One step at a time (the steps are independent)
     // ---------------------------------------------------------------------------------
 
     /**
-     * @description Borde: una Quote con líneas pero nada más tiene SOLO el paso 1 en verde.
+     * @description Edge case: a Quote with lines and nothing else has ONLY step 1 in green.
      */
     @isTest
     static void quoteLinesAddedTest() {
@@ -121,7 +121,7 @@ private class QuoteProgressControllerTest {
     }
 
     /**
-     * @description Borde: una Quote con documento pero nada más tiene SOLO el paso 3 en verde.
+     * @description Edge case: a Quote with a document and nothing else has ONLY step 3 in green.
      */
     @isTest
     static void quoteDocumentCreatedTest() {
@@ -137,8 +137,8 @@ private class QuoteProgressControllerTest {
     }
 
     /**
-     * @description Negativo: el documento de OTRA Quote de la misma Opportunity no cuenta.
-     *              Por eso se filtra por SBQQ__Quote__c y no por SBQQ__Opportunity__c.
+     * @description Negative: the document of ANOTHER Quote of the same Opportunity does not count.
+     *              That is why it filters by SBQQ__Quote__c and not by SBQQ__Opportunity__c.
      */
     @isTest
     static void documentOfOtherQuoteNotCountedTest() {
@@ -152,12 +152,12 @@ private class QuoteProgressControllerTest {
         Test.stopTest();
 
         System.assertEquals( false, stepList[DOCUMENT_INDEX].isDone,
-            'El documento de otra Quote de la misma Opportunity no debería contar' );
+            'The document of another Quote of the same Opportunity should not count' );
     }
 
     /**
-     * @description Borde: una Quote de una Opportunity Closed Won (y nada más) tiene SOLO el
-     *              paso 4 en verde.
+     * @description Edge case: a Quote of a Closed Won Opportunity (and nothing else) has ONLY
+     *              step 4 in green.
      */
     @isTest
     static void opportunityClosedWonTest() {
@@ -172,8 +172,8 @@ private class QuoteProgressControllerTest {
     }
 
     /**
-     * @description Borde: una Quote sin Opportunity no rompe (sin NullPointerException) y el
-     *              paso 4 queda en rojo.
+     * @description Edge case: a Quote without an Opportunity does not break (no NullPointerException) and
+     *              step 4 stays red.
      */
     @isTest
     static void quoteWithoutOpportunityTest() {
@@ -184,16 +184,16 @@ private class QuoteProgressControllerTest {
         Test.stopTest();
 
         System.assertEquals( false, stepList[CLOSED_WON_INDEX].isDone,
-            'Sin Opportunity, el paso Opportunity Closed Won debería estar en rojo' );
+            'Without an Opportunity, the Opportunity Closed Won step should be red' );
     }
 
     // ---------------------------------------------------------------------------------
-    // Paso 2: qué Status cuentan como aprobada
+    // Step 2: which Status values count as approved
     // ---------------------------------------------------------------------------------
 
     /**
-     * @description Positivo: Approved, Presented y Accepted cuentan como aprobada
-     *              (Presented y Accepted son estados posteriores a la aprobación).
+     * @description Positive: Approved, Presented and Accepted count as approved
+     *              (Presented and Accepted are statuses after the approval).
      */
     @isTest
     static void approvedStatusesTest() {
@@ -204,13 +204,13 @@ private class QuoteProgressControllerTest {
         for ( String status : statusList ) {
             List<QuoteProgressController.ProgressStep> stepList = QuoteProgressController.getProgressSteps( quoteIdByStatusMap.get( status ) );
             System.assertEquals( true, stepList[APPROVED_INDEX].isDone,
-                'Una Quote en ' + status + ' debería tener el paso Quote Approved en verde' );
+                'A Quote in ' + status + ' should have the Quote Approved step in green' );
         }
         Test.stopTest();
     }
 
     /**
-     * @description Negativo: Draft, In Review, Denied y Rejected no cuentan como aprobada.
+     * @description Negative: Draft, In Review, Denied and Rejected do not count as approved.
      */
     @isTest
     static void notApprovedStatusesTest() {
@@ -221,18 +221,18 @@ private class QuoteProgressControllerTest {
         for ( String status : statusList ) {
             List<QuoteProgressController.ProgressStep> stepList = QuoteProgressController.getProgressSteps( quoteIdByStatusMap.get( status ) );
             System.assertEquals( false, stepList[APPROVED_INDEX].isDone,
-                'Una Quote en ' + status + ' debería tener el paso Quote Approved en rojo' );
+                'A Quote in ' + status + ' should have the Quote Approved step in red' );
         }
         Test.stopTest();
     }
 
     // ---------------------------------------------------------------------------------
-    // Eficiencia y errores
+    // Efficiency and errors
     // ---------------------------------------------------------------------------------
 
     /**
-     * @description Eficiencia: el controller usa 1 sola SOQL (los 5 pasos salen de la misma
-     *              query, con un lookup y una subquery).
+     * @description Efficiency: the controller uses only 1 SOQL (the 5 steps come from the same
+     *              query, with a lookup and a subquery).
      */
     @isTest
     static void singleQueryTest() {
@@ -243,12 +243,12 @@ private class QuoteProgressControllerTest {
         Integer queriesUsed = Limits.getQueries();
         Test.stopTest();
 
-        System.assertEquals( 1, queriesUsed, 'El controller debería usar una sola SOQL' );
+        System.assertEquals( 1, queriesUsed, 'The controller should use a single SOQL' );
     }
 
     /**
-     * @description Negativo: si la Quote no existe (por ejemplo, la borraron), se lanza una
-     *              AuraHandledException con un mensaje legible para el usuario.
+     * @description Negative: if the Quote does not exist (for example, it was deleted), an
+     *              AuraHandledException is thrown with a message the user can read.
      */
     @isTest
     static void quoteNotFoundTest() {
@@ -266,7 +266,7 @@ private class QuoteProgressControllerTest {
         Test.stopTest();
 
         System.assertEquals( QuoteProgressController.QUOTE_NOT_FOUND_MESSAGE, errorMessage,
-            'Una Quote inexistente debería lanzar una AuraHandledException con el mensaje para el usuario' );
+            'A Quote that does not exist should throw an AuraHandledException with the user message' );
     }
 
     // ---------------------------------------------------------------------------------
@@ -274,7 +274,7 @@ private class QuoteProgressControllerTest {
     // ---------------------------------------------------------------------------------
 
     /**
-     * @description Inserta una Quote con la Opportunity y el Status indicados.
+     * @description Inserts a Quote with the given Opportunity and Status.
      */
     private static SBQQ__Quote__c insertQuote( Id opportunityId, String status ) {
         SBQQ__Quote__c quote = TestDataFactory.buildQuotes( getAccountId(), 1, status, Date.today().addDays( 30 ) )[0];
@@ -284,8 +284,8 @@ private class QuoteProgressControllerTest {
     }
 
     /**
-     * @description Inserta una Quote por cada Status (con un solo insert) y devuelve sus Ids
-     *              por Status.
+     * @description Inserts one Quote per Status (with a single insert) and returns their Ids
+     *              by Status.
      */
     private static Map<String, Id> insertQuotesByStatus( List<String> statusList ) {
         Id accountId = getAccountId();
@@ -306,13 +306,13 @@ private class QuoteProgressControllerTest {
     }
 
     /**
-     * @description Verifica que SOLO el paso de la posición indicada esté en verde.
+     * @description Checks that ONLY the step at the given position is green.
      */
     private static void assertOnlyStepDone( List<QuoteProgressController.ProgressStep> stepList, Integer doneIndex ) {
         for ( Integer i = 0; i < stepList.size(); i++ ) {
             Boolean expectedIsDone = ( i == doneIndex );
             System.assertEquals( expectedIsDone, stepList[i].isDone,
-                'El paso "' + stepList[i].label + '" debería estar ' + ( expectedIsDone ? 'en verde' : 'en rojo' ) );
+                'The step "' + stepList[i].label + '" should be ' + ( expectedIsDone ? 'green' : 'red' ) );
         }
     }
 

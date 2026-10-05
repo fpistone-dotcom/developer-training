@@ -1,25 +1,25 @@
 /**
- * @description DEV #4, camino nocturno: todas las noches (lo lanza ActiveSubscriptionRecountScheduler)
- *              recalcula Active_Subscriptions__c en todos los Contracts.
+ * @description DEV #4, nightly path: every night (launched by ActiveSubscriptionRecountScheduler)
+ *              it recalculates Active_Subscriptions__c on every Contract.
  *
- *              Por qué hace falta: una Subscription puede EMPEZAR (un Amendment con fecha futura)
- *              o VENCER (pasa su fecha de fin o de terminación) sin que nadie la edite, y entonces
- *              el trigger no se entera. Lo mismo si cambian las fechas del Contract, de donde las
- *              Subscriptions toman su fecha de fin. Este Batch corrige todo eso cada noche.
+ *              Why it is needed: a Subscription can START (an Amendment with a future date)
+ *              or END (its end or termination date passes) without anyone editing it, so the
+ *              trigger never finds out. The same happens if the Contract dates change, since the
+ *              Subscriptions take their end date from them. This Batch fixes all of that every night.
  *
- *              Recorre TODOS los Contracts (y no solo los que tienen Subscriptions) porque la
- *              query es más simple y además completa con 0 los Contracts creados antes del campo.
- *              El recuento solo hace update si el número cambió, así que no hay DML de más.
+ *              It goes through ALL the Contracts (not only the ones with Subscriptions) because the
+ *              query is simpler and it also fills with 0 the Contracts created before the field existed.
+ *              The recount only updates if the number changed, so there is no extra DML.
  *
- *              La lógica no está acá: reutiliza ActiveSubscriptionCounter, el mismo método que
- *              usa el trigger (DRY). Corrido una vez a mano después del deploy, sirve de backfill.
+ *              The logic is not here: it reuses ActiveSubscriptionCounter, the same method the
+ *              trigger uses (DRY). Run once manually after the deploy, it works as a backfill.
  */
 public with sharing class ActiveSubscriptionRecountBatch implements Database.Batchable<SObject> {
 
     /**
-     * @description Trae todos los Contracts. Solo el Id: el recuento hace su propia query.
-     * @param bc Contexto del Batch (lo pasa Salesforce)
-     * @return QueryLocator con los Contracts a recalcular
+     * @description Gets all the Contracts. Only the Id: the recount runs its own query.
+     * @param bc Batch context (passed by Salesforce)
+     * @return QueryLocator with the Contracts to recalculate
      */
     public Database.QueryLocator start( Database.BatchableContext bc ) {
         return Database.getQueryLocator( [
@@ -29,25 +29,25 @@ public with sharing class ActiveSubscriptionRecountBatch implements Database.Bat
     }
 
     /**
-     * @description Se ejecuta una vez por cada tanda de (hasta) 200 Contracts. Cada tanda
-     *              tiene sus propios governor limits.
-     * @param bc           Contexto del Batch
-     * @param contractList Contracts de esta tanda
+     * @description Runs once for each chunk of (up to) 200 Contracts. Each chunk
+     *              has its own governor limits.
+     * @param bc           Batch context
+     * @param contractList Contracts in this chunk
      */
     public void execute( Database.BatchableContext bc, List<Contract> contractList ) {
         Set<Id> contractIdSet = new Set<Id>();
         for ( Contract con : contractList ) {
             contractIdSet.add( con.Id );
         }
-        // El mismo método que usa SubscriptionTriggerHandler
+        // The same method SubscriptionTriggerHandler uses
         ActiveSubscriptionCounter.recountActiveSubscriptions( contractIdSet );
     }
 
     /**
-     * @description No hay nada que hacer al terminar: los errores ya se guardaron en cada tanda.
-     * @param bc Contexto del Batch
+     * @description Nothing to do at the end: the errors were already saved in each chunk.
+     * @param bc Batch context
      */
     public void finish( Database.BatchableContext bc ) {
-        // Vacío a propósito: la interfaz Database.Batchable obliga a tener este método
+        // Empty on purpose: the Database.Batchable interface requires this method
     }
 }

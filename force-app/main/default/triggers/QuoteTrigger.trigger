@@ -1,14 +1,14 @@
 /**
- * @description Único trigger de Quote (SBQQ__Quote__c). No tiene lógica: solo mira en qué
- *              momento se ejecuta y llama al método que corresponde del QuoteTriggerHandler.
+ * @description Single trigger for Quote (SBQQ__Quote__c). It has no logic: it only checks which
+ *              context it is running in and calls the matching method of QuoteTriggerHandler.
  *
- * Requirement DEV #1 (Parte A):
- *   - before insert -> la Quote se crea ya aprobada (carga de datos, tests)
- *   - before update -> el Status de la Quote pasa a Approved (Approval Process o edición)
+ * Requirement DEV #1 (Part A):
+ *   - before insert -> the Quote is created already approved (data load, tests)
+ *   - before update -> the Quote Status changes to Approved (Approval Process or manual edit)
  *
- * Requirement DEV #3 (Parte 3):
- *   - after insert  -> nace una Renewal Quote: email a su Owner con el link (en after porque
- *                      el link necesita el Id de la Quote)
+ * Requirement DEV #3 (Part 3):
+ *   - after insert  -> a Renewal Quote is created: email to its Owner with the link (after,
+ *                      because the link needs the Quote Id)
  */
 trigger QuoteTrigger on SBQQ__Quote__c ( before insert, before update, after insert ) {
     if ( Trigger.isBefore && Trigger.isInsert ) {

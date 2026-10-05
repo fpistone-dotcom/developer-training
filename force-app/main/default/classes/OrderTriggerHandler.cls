@@ -1,52 +1,52 @@
 /**
- * @description Lógica del OrderTrigger. Resuelve el DEV #2: activar la Order
- *              automáticamente cuando su Price Calculation Status es (o pasa a ser)
- *              'Completed' o 'Not Needed'.
+ * @description Logic for OrderTrigger. Solves DEV #2: automatically activate the Order
+ *              when its Price Calculation Status is (or changes to) 'Completed' or
+ *              'Not Needed'.
  *
- *              Salesforce no deja activar una Order sin productos, por eso hay dos caminos:
- *              - Cuando se crea (after insert): CPQ crea la Order antes que sus productos,
- *                así que la activación se deja para después, en OrderActivationQueueable.
- *              - Cuando se actualiza (before update): los productos ya existen, así que
- *                se cambia el Status directo en el registro, sin DML.
- *              Una vez activada, el Flow Auto_Contract_Order_On_Activation la marca como Contracted.
+ *              Salesforce does not allow activating an Order without products, so there are two paths:
+ *              - When it is created (after insert): CPQ creates the Order before its products,
+ *                so the activation is left for later, in OrderActivationQueueable.
+ *              - When it is updated (before update): the products already exist, so the
+ *                Status is changed directly on the record, with no DML.
+ *              Once activated, the Auto_Contract_Order_On_Activation Flow marks it as Contracted.
  *
- *              Estructura: los métodos públicos (beforeUpdate, afterInsert) son la entrada
- *              por contexto y solo llaman a métodos private static que tienen la lógica.
+ *              Structure: the public methods (beforeUpdate, afterInsert) are the entry point
+ *              for each context and only call private static methods that hold the logic.
  *
- * Requirement DEV #2 (textual): "I want the ability to automatically activate an Order
+ * Requirement DEV #2 (verbatim): "I want the ability to automatically activate an Order
  * record whenever it is created and the Price Calculation Status on the Order is updated
  * to either 'Completed' or 'Not Needed'."
- * Partes del requirement y dónde se cubren:
- *   (A) "activar la Order automáticamente"         -> Status = 'Activated'
- *   (B) "cuando se crea"                            -> afterInsert + OrderActivationQueueable
- *   (C) "cuando el Price Calculation Status cambia" -> beforeUpdate (solo si el valor cambia)
- *   (D) "a 'Completed' o 'Not Needed'"              -> READY_PRICE_CALC_STATUSES
+ * Requirement parts and where they are covered:
+ *   (A) "automatically activate an Order"        -> Status = 'Activated'
+ *   (B) "whenever it is created"                  -> afterInsert + OrderActivationQueueable
+ *   (C) "the Price Calculation Status is updated" -> beforeUpdate (only if the value changes)
+ *   (D) "to either 'Completed' or 'Not Needed'"   -> READY_PRICE_CALC_STATUSES
  */
 public with sharing class OrderTriggerHandler {
 
     public static final String STATUS_DRAFT = 'Draft';
     public static final String STATUS_ACTIVATED = 'Activated';
 
-    // Req (D): los dos valores que pide el requirement para activar la Order
+    // Req (D): the two values the requirement asks for to activate the Order
     public static final Set<String> READY_PRICE_CALC_STATUSES = new Set<String>{ 'Completed', 'Not Needed' };
 
     private static final String CLASS_NAME = 'OrderTriggerHandler';
 
     // ---------------------------------------------------------------------------------
-    // Métodos de entrada: uno por contexto de trigger. Solo llaman a la lógica.
+    // Entry methods: one per trigger context. They only call the logic.
     // ---------------------------------------------------------------------------------
 
     /**
-     * @description Entrada del before update. Req (C).
-     * @param newOrderList    Trigger.new (los registros con los valores nuevos)
-     * @param oldOrderByIdMap Trigger.oldMap (los registros con los valores de antes)
+     * @description Before update entry point. Req (C).
+     * @param newOrderList    Trigger.new (the records with the new values)
+     * @param oldOrderByIdMap Trigger.oldMap (the records with the previous values)
      */
     public static void beforeUpdate( List<Order> newOrderList, Map<Id, Order> oldOrderByIdMap ) {
         activateOrdersWithChangedPriceCalcStatus( newOrderList, oldOrderByIdMap );
     }
 
     /**
-     * @description Entrada del after insert. Req (B).
+     * @description After insert entry point. Req (B).
      * @param newOrderList Trigger.new
      */
     public static void afterInsert( List<Order> newOrderList ) {
@@ -54,42 +54,42 @@ public with sharing class OrderTriggerHandler {
     }
 
     // ---------------------------------------------------------------------------------
-    // Lógica (private static)
+    // Logic (private static)
     // ---------------------------------------------------------------------------------
 
     /**
-     * @description Req (C). Activa las Orders cuyo Price Calculation Status acaba de
-     *              cambiar a 'Completed' o 'Not Needed', siempre que ya tengan productos.
+     * @description Req (C). Activates the Orders whose Price Calculation Status has just
+     *              changed to 'Completed' or 'Not Needed', as long as they already have products.
      * @param newOrderList    Trigger.new
      * @param oldOrderByIdMap Trigger.oldMap
      */
     private static void activateOrdersWithChangedPriceCalcStatus( List<Order> newOrderList, Map<Id, Order> oldOrderByIdMap ) {
         List<Order> readyOrderList = filterOrdersReadyOnUpdate( newOrderList, oldOrderByIdMap );
-        // Condicional antes de la SOQL: si ninguna Order califica, no gastamos queries
+        // Condition before the SOQL: if no Order qualifies, we do not spend any queries
         if ( readyOrderList.isEmpty() ) {
             return;
         }
 
-        // Juntamos los Ids de las Orders candidatas para hacer una sola query con todas
+        // Collect the Ids of the candidate Orders to run a single query for all of them
         Set<Id> readyOrderIdSet = new Set<Id>();
         for ( Order ord : readyOrderList ) {
             readyOrderIdSet.add( ord.Id );
         }
 
-        // No es parte del requirement: regla de Salesforce, una Order sin productos no se puede activar.
-        // Cubre el caso en que CPQ cambie el status antes de crear los productos.
+        // Not part of the requirement: Salesforce rule, an Order without products cannot be activated.
+        // Covers the case where CPQ changes the status before creating the products.
         Set<Id> orderIdWithItemsSet = getOrderIdsWithItems( readyOrderIdSet );
         for ( Order ord : readyOrderList ) {
             if ( orderIdWithItemsSet.contains( ord.Id ) ) {
-                // Req (A): activar. En before alcanza con asignar el campo, Salesforce lo guarda solo.
+                // Req (A): activate. In before it is enough to set the field; Salesforce saves it.
                 ord.Status = STATUS_ACTIVATED;
             }
         }
     }
 
     /**
-     * @description Req (B). Cuando la Order se crea con un status listo, deja anotada su
-     *              activación para unos segundos después, porque todavía no tiene productos.
+     * @description Req (B). When the Order is created with a ready status, its activation is
+     *              scheduled for a few seconds later, because it does not have products yet.
      * @param newOrderList Trigger.new
      */
     private static void enqueueActivationForNewOrders( List<Order> newOrderList ) {
@@ -103,9 +103,9 @@ public with sharing class OrderTriggerHandler {
             return;
         }
 
-        // No es parte del requirement: si nos pasamos del límite de Queueables, Salesforce tira
-        // un error que no se puede atrapar y se cancela la creación de la Order entera.
-        // Pasa si la Order se crea desde un proceso async. En ese caso registramos el error y salimos.
+        // Not part of the requirement: if we go over the Queueable limit, Salesforce throws
+        // an error that cannot be caught and the whole Order creation is rolled back.
+        // It happens if the Order is created from an async process. In that case we log the error and exit.
         if ( Limits.getQueueableJobs() >= Limits.getLimitQueueableJobs() ) {
             List<Error_Log__c> errorLogList = new List<Error_Log__c>();
             for ( Id orderId : orderIdToActivateSet ) {
@@ -119,11 +119,11 @@ public with sharing class OrderTriggerHandler {
     }
 
     /**
-     * @description Req (D). La regla en un solo lugar: la Order está en Draft y su
-     *              status es 'Completed' o 'Not Needed'.
-     *              Supuesto nuestro (no está en el requirement): solo se activan Orders en Draft.
-     * @param ord Order a evaluar
-     * @return true si la Order se puede activar
+     * @description Req (D). The rule in a single place: the Order is in Draft and its
+     *              status is 'Completed' or 'Not Needed'.
+     *              Our assumption (not in the requirement): only Draft Orders are activated.
+     * @param ord Order to evaluate
+     * @return true if the Order can be activated
      */
     private static Boolean isReadyToActivate( Order ord ) {
         if ( ord.Status == STATUS_DRAFT && READY_PRICE_CALC_STATUSES.contains( ord.SBQQ__PriceCalcStatus__c ) ) {
@@ -134,17 +134,17 @@ public with sharing class OrderTriggerHandler {
     }
 
     /**
-     * @description Req (C). Devuelve las Orders que hay que activar: las que tienen el
-     *              Price Calculation Status recién cambiado a un valor listo y siguen en Draft.
+     * @description Req (C). Returns the Orders to activate: the ones whose Price Calculation
+     *              Status has just changed to a ready value and that are still in Draft.
      * @param newOrderList    Trigger.new
      * @param oldOrderByIdMap Trigger.oldMap
-     * @return Orders listas para activar
+     * @return Orders ready to activate
      */
     private static List<Order> filterOrdersReadyOnUpdate( List<Order> newOrderList, Map<Id, Order> oldOrderByIdMap ) {
         List<Order> readyOrderList = new List<Order>();
         for ( Order newOrder : newOrderList ) {
             Order oldOrder = oldOrderByIdMap.get( newOrder.Id );
-            // "Se actualiza a" significa que el valor CAMBIÓ. Si no cambió, no se vuelve a procesar.
+            // "Is updated to" means the value CHANGED. If it did not change, it is not processed again.
             Boolean priceCalcStatusChanged = newOrder.SBQQ__PriceCalcStatus__c != oldOrder.SBQQ__PriceCalcStatus__c;
             if ( priceCalcStatusChanged && isReadyToActivate( newOrder ) ) {
                 readyOrderList.add( newOrder );
@@ -154,12 +154,12 @@ public with sharing class OrderTriggerHandler {
     }
 
     /**
-     * @description No es parte del requirement: regla de Salesforce. Devuelve cuáles de
-     *              estas Orders tienen al menos un producto. Una sola query para todas;
-     *              la subquery trae como máximo 1 producto por Order (LIMIT 1), porque
-     *              solo nos importa saber si tiene o no.
-     * @param orderIdSet Orders a revisar
-     * @return Ids de las Orders que tienen productos
+     * @description Not part of the requirement: Salesforce rule. Returns which of these
+     *              Orders have at least one product. A single query for all of them;
+     *              the subquery brings at most 1 product per Order (LIMIT 1), because
+     *              we only care whether it has any or not.
+     * @param orderIdSet Orders to check
+     * @return Ids of the Orders that have products
      */
     private static Set<Id> getOrderIdsWithItems( Set<Id> orderIdSet ) {
         Set<Id> orderIdWithItemsSet = new Set<Id>();

@@ -1,10 +1,10 @@
 /**
- * @description Req (B) del DEV #2, "cuando la Order se crea". CPQ crea la Order antes
- *              que sus productos, así que la activación se hace acá, unos segundos
- *              después, cuando los productos ya existen.
+ * @description Req (B) of DEV #2, "whenever it is created". CPQ creates the Order before
+ *              its products, so the activation happens here, a few seconds later, when
+ *              the products already exist.
  *
- *              Al activarla se dispara el Flow Auto_Contract_Order_On_Activation,
- *              que la marca como Contracted.
+ *              Activating it fires the Auto_Contract_Order_On_Activation Flow,
+ *              which marks it as Contracted.
  */
 public with sharing class OrderActivationQueueable implements Queueable {
 
@@ -13,21 +13,21 @@ public with sharing class OrderActivationQueueable implements Queueable {
     private final Set<Id> orderIdSet;
 
     /**
-     * @param orderIdSet Orders a activar
+     * @param orderIdSet Orders to activate
      */
     public OrderActivationQueueable( Set<Id> orderIdSet ) {
         this.orderIdSet = orderIdSet;
     }
 
     /**
-     * @description Vuelve a revisar cada Order con los datos actuales (pudo cambiar
-     *              mientras esperaba) y activa las que todavía cumplen la regla.
-     * @param context Contexto del Queueable
+     * @description Checks each Order again with its current data (it could have changed
+     *              while waiting) and activates the ones that still meet the rule.
+     * @param context Queueable context
      */
     public void execute( QueueableContext context ) {
         List<Order> orderToActivateList = new List<Order>();
-        // Req (D): sigue en Draft y con 'Completed' o 'Not Needed'.
-        // La subquery trae como máximo 1 producto por Order: solo importa saber si tiene.
+        // Req (D): still in Draft and with 'Completed' or 'Not Needed'.
+        // The subquery brings at most 1 product per Order: we only care whether it has any.
         for ( Order ord : [
             SELECT Id, ( SELECT Id FROM OrderItems LIMIT 1 )
             FROM Order
@@ -35,9 +35,9 @@ public with sharing class OrderActivationQueueable implements Queueable {
             AND Status = :OrderTriggerHandler.STATUS_DRAFT
             AND SBQQ__PriceCalcStatus__c IN :OrderTriggerHandler.READY_PRICE_CALC_STATUSES
         ] ) {
-            // No es parte del requirement: sin productos no se puede activar (regla de Salesforce)
+            // Not part of the requirement: without products it cannot be activated (Salesforce rule)
             if ( !ord.OrderItems.isEmpty() ) {
-                // Req (A): activar la Order
+                // Req (A): activate the Order
                 ord.Status = OrderTriggerHandler.STATUS_ACTIVATED;
                 orderToActivateList.add( ord );
             }
@@ -46,18 +46,18 @@ public with sharing class OrderActivationQueueable implements Queueable {
             return;
         }
 
-        // false = si una Order falla, las demás se activan igual
+        // false = if one Order fails, the others are still activated
         List<Database.SaveResult> saveResultList = Database.update( orderToActivateList, false );
         logFailures( orderToActivateList, saveResultList );
     }
 
     /**
-     * @description No es parte del requirement: que ningún error pase en silencio.
-     *              Los resultados vuelven en el mismo orden que la lista, y un resultado
-     *              con error no trae Id, por eso se busca la Order por posición (i).
-     *              Los logs se juntan en una lista y se guardan con un solo insert al final.
-     * @param orderList      Orders que se mandaron a actualizar
-     * @param saveResultList Resultados de Database.update
+     * @description Not part of the requirement: no error should fail silently.
+     *              The results come back in the same order as the list, and a failed result
+     *              has no Id, so the Order is found by position (i).
+     *              The logs are collected in a list and saved with a single insert at the end.
+     * @param orderList      Orders that were sent to update
+     * @param saveResultList Results of Database.update
      */
     private static void logFailures( List<Order> orderList, List<Database.SaveResult> saveResultList ) {
         List<Error_Log__c> errorLogList = new List<Error_Log__c>();

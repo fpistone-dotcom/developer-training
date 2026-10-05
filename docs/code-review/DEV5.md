@@ -480,7 +480,7 @@ Mostrar el test `quoteNotFoundTest`. En la UI no se puede abrir una Quote borrad
 | #4 | `ActiveSubscriptionRecountScheduler` | 100% | — |
 | #3 | `ContractTrigger` | 100% | — |
 | #3 | `ContractTriggerHandler` | 100% | — |
-| #3 | `RenewalQuoteBatch` | 91% | 122, 138, 155-156 (ramas de error y de seguridad: updates fallidos, sin Opportunity en Prospecting). |
+| #3 | `RenewalQuoteBatch` | 91% | 123, 139, 156-157 (ramas de error y de seguridad: updates fallidos, sin Opportunity en Prospecting). |
 | #3 | `RenewalQuoteScheduler` | 100% | — |
 | #5 | `QuoteProgressController` | 100% | — |
 

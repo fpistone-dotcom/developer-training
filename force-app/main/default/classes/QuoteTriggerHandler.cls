@@ -1,55 +1,55 @@
 /**
- * @description Lógica del QuoteTrigger. Resuelve la Parte A del DEV #1: cuando una Quote
- *              se aprueba, su fecha de vencimiento pasa a ser 30 días desde la aprobación,
- *              pisando el vencimiento por defecto de CPQ (30 días desde la creación).
+ * @description Logic for QuoteTrigger. Solves Part A of DEV #1: when a Quote is approved,
+ *              its expiration date becomes 30 days from the approval, overriding CPQ's
+ *              default expiration (30 days from creation).
  *
- *              "Se aprueba" = el campo SBQQ__Status__c pasa a 'Approved'. Lo pone el field
- *              update Set_Quote_Status_Approved de los Approval Processes, pero también puede
- *              cambiarlo un usuario o una carga de datos: el trigger reacciona al CAMBIO DEL
- *              CAMPO, no importa quién lo haga.
+ *              "Is approved" = the SBQQ__Status__c field changes to 'Approved'. It is set by the
+ *              Set_Quote_Status_Approved field update of the Approval Processes, but a user or a
+ *              data load can also change it: the trigger reacts to the FIELD CHANGE, no matter
+ *              who makes it.
  *
- *              DEV #1 corre en before: modificamos un campo del mismo registro, así que alcanza
- *              con asignarlo en memoria (sin DML, sin SOQL y sin recursión).
+ *              DEV #1 runs in before: we change a field on the same record, so setting it
+ *              in memory is enough (no DML, no SOQL and no recursion).
  *
- *              También resuelve la Parte 3 del DEV #3 (after insert): el email al Owner de una
- *              Renewal Quote nueva.
+ *              It also solves Part 3 of DEV #3 (after insert): the email to the Owner of a
+ *              new Renewal Quote.
  *
- *              Estructura: los métodos públicos (beforeInsert, beforeUpdate) son la entrada
- *              por contexto y solo llaman a métodos private static que tienen la lógica.
+ *              Structure: the public methods (beforeInsert, beforeUpdate, afterInsert) are the
+ *              entry point for each context and only call private static methods that hold the logic.
  *
- * Requirement DEV #1 (textual, primera parte): "Whenever a Quote record is approved, the
+ * Requirement DEV #1 (verbatim, first part): "Whenever a Quote record is approved, the
  * Quote Expiration Date should be set to 30 days from the date in which it was approved."
- * Partes del requirement y dónde se cubren:
- *   (A) "whenever a Quote record is approved"   -> beforeUpdate (Status cambia a Approved)
- *                                                 y beforeInsert (Quote creada ya aprobada)
+ * Requirement parts and where they are covered:
+ *   (A) "whenever a Quote record is approved"   -> beforeUpdate (Status changes to Approved)
+ *                                                 and beforeInsert (Quote created already approved)
  *   (B) "Quote Expiration Date ... 30 days from -> setExpirationDate
  *        the date in which it was approved"
  *
- * Requirement DEV #3 (textual, tercera parte): "When this happens, the Owner of the Quote should
+ * Requirement DEV #3 (verbatim, third part): "When this happens, the Owner of the Quote should
  * have an email notification sent to them indicating that a Renewal Quote has been created, and
  * the email should include a link to the Quote."
- * Partes del requirement y dónde se cubren:
- *   (F) "a Renewal Quote has been created"         -> afterInsert, Quotes con SBQQ__Type__c = 'Renewal'
+ * Requirement parts and where they are covered:
+ *   (F) "a Renewal Quote has been created"         -> afterInsert, Quotes with SBQQ__Type__c = 'Renewal'
  *   (G) "the Owner of the Quote ... email ... link" -> sendRenewalQuoteNotifications
  */
 public with sharing class QuoteTriggerHandler {
 
     public static final String STATUS_APPROVED = 'Approved';
 
-    // Req (B): días de vigencia desde la aprobación
+    // Req (B): days of validity from the approval
     public static final Integer DAYS_UNTIL_EXPIRATION = 30;
 
-    // Req (F): tipo con el que CPQ crea las Renewal Quotes (verificado en el org, Q-00085)
+    // Req (F): type CPQ uses when it creates Renewal Quotes (verified in the org, Q-00085)
     public static final String TYPE_RENEWAL = 'Renewal';
 
     private static final String CLASS_NAME = 'QuoteTriggerHandler';
 
     // ---------------------------------------------------------------------------------
-    // Métodos de entrada: uno por contexto de trigger. Solo llaman a la lógica.
+    // Entry methods: one per trigger context. They only call the logic.
     // ---------------------------------------------------------------------------------
 
     /**
-     * @description Entrada del before insert. Req (A): la Quote se crea ya aprobada.
+     * @description Before insert entry point. Req (A): the Quote is created already approved.
      * @param newQuoteList Trigger.new
      */
     public static void beforeInsert( List<SBQQ__Quote__c> newQuoteList ) {
@@ -57,17 +57,17 @@ public with sharing class QuoteTriggerHandler {
     }
 
     /**
-     * @description Entrada del before update. Req (A): el Status pasa a Approved.
-     * @param newQuoteList    Trigger.new (los registros con los valores nuevos)
-     * @param oldQuoteByIdMap Trigger.oldMap (los registros con los valores de antes)
+     * @description Before update entry point. Req (A): the Status changes to Approved.
+     * @param newQuoteList    Trigger.new (the records with the new values)
+     * @param oldQuoteByIdMap Trigger.oldMap (the records with the previous values)
      */
     public static void beforeUpdate( List<SBQQ__Quote__c> newQuoteList, Map<Id, SBQQ__Quote__c> oldQuoteByIdMap ) {
         setExpirationDateOnUpdate( newQuoteList, oldQuoteByIdMap );
     }
 
     /**
-     * @description Entrada del after insert. Req (F): nace una Renewal Quote. En after porque
-     *              el link del email necesita el Id de la Quote.
+     * @description After insert entry point. Req (F): a Renewal Quote is created. In after
+     *              because the email link needs the Quote Id.
      * @param newQuoteList Trigger.new
      */
     public static void afterInsert( List<SBQQ__Quote__c> newQuoteList ) {
@@ -75,12 +75,12 @@ public with sharing class QuoteTriggerHandler {
     }
 
     // ---------------------------------------------------------------------------------
-    // Lógica (private static)
+    // Logic (private static)
     // ---------------------------------------------------------------------------------
 
     /**
-     * @description Req (A). En el insert no hay valor anterior: alcanza con que la Quote
-     *              se cree con Status = Approved.
+     * @description Req (A). On insert there is no previous value: it is enough that the Quote
+     *              is created with Status = Approved.
      * @param newQuoteList Trigger.new
      */
     private static void setExpirationDateOnInsert( List<SBQQ__Quote__c> newQuoteList ) {
@@ -94,9 +94,9 @@ public with sharing class QuoteTriggerHandler {
     }
 
     /**
-     * @description Req (A). Solo procesa las Quotes cuyo Status CAMBIÓ a Approved.
-     *              Si la Quote ya estaba aprobada y se edita otro campo, no se vuelve a
-     *              calcular el vencimiento (la fecha de aprobación no cambió).
+     * @description Req (A). Only processes the Quotes whose Status CHANGED to Approved.
+     *              If the Quote was already approved and another field is edited, the
+     *              expiration is not recalculated (the approval date did not change).
      * @param newQuoteList    Trigger.new
      * @param oldQuoteByIdMap Trigger.oldMap
      */
@@ -104,7 +104,7 @@ public with sharing class QuoteTriggerHandler {
         List<SBQQ__Quote__c> approvedQuoteList = new List<SBQQ__Quote__c>();
         for ( SBQQ__Quote__c newQuote : newQuoteList ) {
             SBQQ__Quote__c oldQuote = oldQuoteByIdMap.get( newQuote.Id );
-            // "Se aprueba" significa que el valor CAMBIÓ a Approved en esta transacción
+            // "Is approved" means the value CHANGED to Approved in this transaction
             Boolean statusChanged = newQuote.SBQQ__Status__c != oldQuote.SBQQ__Status__c;
             if ( statusChanged && newQuote.SBQQ__Status__c == STATUS_APPROVED ) {
                 approvedQuoteList.add( newQuote );
@@ -114,11 +114,11 @@ public with sharing class QuoteTriggerHandler {
     }
 
     /**
-     * @description Req (B). La regla en un solo lugar: vencimiento = hoy + 30 días.
-     *              "Hoy" es el día de la aprobación, porque este código corre en la misma
-     *              transacción que aprueba la Quote. La fecha se calcula una sola vez,
-     *              afuera del loop. Estamos en before: no hace falta DML.
-     * @param approvedQuoteList Quotes recién aprobadas
+     * @description Req (B). The rule in a single place: expiration = today + 30 days.
+     *              "Today" is the approval date, because this code runs in the same
+     *              transaction that approves the Quote. The date is calculated only once,
+     *              outside the loop. We are in before: no DML is needed.
+     * @param approvedQuoteList Quotes that were just approved
      */
     private static void setExpirationDate( List<SBQQ__Quote__c> approvedQuoteList ) {
         if ( approvedQuoteList.isEmpty() ) {
@@ -131,19 +131,19 @@ public with sharing class QuoteTriggerHandler {
     }
 
     /**
-     * @description Req (F) y (G). Manda un email al Owner de cada Renewal Quote nueva, con un
-     *              link a la Quote. Avisa por cualquier Renewal Quote PEDIDA (Contract con
-     *              SBQQ__RenewalQuoted__c = true), la pida el Batch del DEV #3 o un usuario a mano
-     *              (supuesto confirmado). No avisa por la Renewal Quote temporal que CPQ crea y
-     *              borra al activar el Contract.
+     * @description Req (F) and (G). Sends an email to the Owner of each new Renewal Quote, with a
+     *              link to the Quote. It notifies for every REQUESTED Renewal Quote (Contract with
+     *              SBQQ__RenewalQuoted__c = true), whether DEV #3's Batch or a user requested it
+     *              (confirmed assumption). It does not notify for the temporary Renewal Quote that
+     *              CPQ creates and deletes when the Contract is activated.
      *
-     *              - Destinatario: setTargetObjectId( OwnerId ). Los emails a usuarios internos
-     *                no cuentan para el límite diario de emails del org (15 en Developer Edition).
-     *              - Un solo Messaging.sendEmail para todas las Quotes (nunca dentro del loop:
-     *                el límite es de 10 envíos por transacción).
-     *              - try/catch: este código corre DENTRO del save en el que CPQ crea la Quote.
-     *                Una excepción sin atrapar haría rollback de la Renewal Quote. El error queda
-     *                en Error_Log__c (no falla en silencio).
+     *              - Recipient: setTargetObjectId( OwnerId ). Emails to internal users do not
+     *                count against the org's daily email limit (15 in Developer Edition).
+     *              - A single Messaging.sendEmail for all the Quotes (never inside the loop:
+     *                the limit is 10 sends per transaction).
+     *              - try/catch: this code runs INSIDE the save in which CPQ creates the Quote.
+     *                An uncaught exception would roll back the Renewal Quote. The error is stored
+     *                in Error_Log__c (it does not fail silently).
      * @param newQuoteList Trigger.new
      */
     private static void sendRenewalQuoteNotifications( List<SBQQ__Quote__c> newQuoteList ) {
@@ -153,16 +153,16 @@ public with sharing class QuoteTriggerHandler {
                 renewalQuoteIdSet.add( newQuote.Id );
             }
         }
-        // Condicional antes de la SOQL: la mayoría de las Quotes no son Renewal
+        // Condition before the SOQL: most Quotes are not Renewals
         if ( renewalQuoteIdSet.isEmpty() ) {
             return;
         }
 
-        // El link abre el registro en Lightning: https://<dominio del org>/<Id de la Quote>
+        // The link opens the record in Lightning: https://<org domain>/<Quote Id>
         String orgUrl = URL.getOrgDomainUrl().toExternalForm();
 
-        // Query para traer los nombres del Account y de la Opportunity y el flag del Contract que
-        // renueva (Quote -> Opportunity -> Contract). Nada de eso viene en Trigger.new.
+        // Query to get the Account and Opportunity names and the flag of the Contract being
+        // renewed (Quote -> Opportunity -> Contract). None of that comes in Trigger.new.
         List<SBQQ__Quote__c> quoteList = [
             SELECT Id, Name, OwnerId, SBQQ__Account__r.Name, SBQQ__Opportunity2__r.Name,
                 SBQQ__Opportunity2__r.SBQQ__RenewedContract__r.SBQQ__RenewalQuoted__c
@@ -170,11 +170,11 @@ public with sharing class QuoteTriggerHandler {
             WHERE Id IN :renewalQuoteIdSet
         ];
 
-        // Solo se avisa por las Renewal Quotes que alguien PIDIÓ (el Batch o un usuario tildó
-        // SBQQ__RenewalQuoted__c en el Contract). Al activar un Contract, CPQ crea una Renewal
-        // Quote TEMPORAL para calcular los precios de la Renewal Opportunity y la borra segundos
-        // después (verificado en el org, Q-00083 y Q-00090). En ese momento el flag está en false.
-        // Se compara con == true porque si la Opportunity no tiene Contract el valor llega null.
+        // Only notify for the Renewal Quotes that someone REQUESTED (the Batch or a user checked
+        // SBQQ__RenewalQuoted__c on the Contract). When a Contract is activated, CPQ creates a
+        // TEMPORARY Renewal Quote to calculate the Renewal Opportunity prices and deletes it seconds
+        // later (verified in the org, Q-00083 and Q-00090). At that moment the flag is false.
+        // It is compared with == true because if the Opportunity has no Contract the value is null.
         List<SBQQ__Quote__c> renewalQuoteList = new List<SBQQ__Quote__c>();
         for ( SBQQ__Quote__c quote : quoteList ) {
             if ( quote.SBQQ__Opportunity2__r.SBQQ__RenewedContract__r.SBQQ__RenewalQuoted__c == true ) {
@@ -189,7 +189,7 @@ public with sharing class QuoteTriggerHandler {
         for ( SBQQ__Quote__c renewalQuote : renewalQuoteList ) {
             Messaging.SingleEmailMessage email = new Messaging.SingleEmailMessage();
             email.setTargetObjectId( renewalQuote.OwnerId );
-            // Con un User como destinatario, Salesforce exige no guardarlo como Activity
+            // With a User as recipient, Salesforce requires not saving it as an Activity
             email.setSaveAsActivity( false );
             email.setSubject( 'Renewal Quote created: ' + renewalQuote.Name );
             email.setPlainTextBody( buildEmailBody( renewalQuote, orgUrl ) );
@@ -199,7 +199,7 @@ public with sharing class QuoteTriggerHandler {
         List<Error_Log__c> errorLogList = new List<Error_Log__c>();
         try {
             List<Messaging.SendEmailResult> resultList = Messaging.sendEmail( emailList, false );
-            // Los resultados vuelven en el mismo orden que los emails: se recorren por posición
+            // The results come back in the same order as the emails: they are read by position
             for ( Integer i = 0; i < resultList.size(); i++ ) {
                 if ( !resultList[i].isSuccess() ) {
                     errorLogList.add( ErrorLogUtil.buildLog( CLASS_NAME, renewalQuoteList[i].Id,
@@ -207,7 +207,7 @@ public with sharing class QuoteTriggerHandler {
                 }
             }
         } catch ( Exception e ) {
-            // Por ejemplo, si el org tiene el envío de emails desactivado (Deliverability)
+            // For example, if the org has email sending turned off (Deliverability)
             for ( SBQQ__Quote__c renewalQuote : renewalQuoteList ) {
                 errorLogList.add( ErrorLogUtil.buildLog( CLASS_NAME, renewalQuote.Id,
                     'Renewal Quote email failed: ' + e.getMessage() ) );
@@ -217,10 +217,10 @@ public with sharing class QuoteTriggerHandler {
     }
 
     /**
-     * @description Req (G). Arma el texto del email: qué se creó, para qué Account y el link.
-     * @param renewalQuote Renewal Quote (con Account y Opportunity consultados)
-     * @param orgUrl       Dominio del org, por ejemplo https://firstchair-dev-ed.develop.my.salesforce.com
-     * @return Cuerpo del email en texto plano
+     * @description Req (G). Builds the email text: what was created, for which Account, and the link.
+     * @param renewalQuote Renewal Quote (with Account and Opportunity queried)
+     * @param orgUrl       Org domain, for example https://firstchair-dev-ed.develop.my.salesforce.com
+     * @return Email body in plain text
      */
     private static String buildEmailBody( SBQQ__Quote__c renewalQuote, String orgUrl ) {
         String body = 'Hello,\n\n'

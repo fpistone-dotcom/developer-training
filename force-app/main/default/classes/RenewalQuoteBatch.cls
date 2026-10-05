@@ -1,54 +1,55 @@
 /**
- * @description Parte 2 del DEV #3: todas las noches (lo lanza RenewalQuoteScheduler) busca los
- *              Contracts activados a los que les quedan 30 días o menos, genera su Renewal Quote
- *              y actualiza su Renewal Opportunity.
+ * @description Part 2 of DEV #3: every night (launched by RenewalQuoteScheduler) it finds the
+ *              activated Contracts that have 30 days or less left, generates their Renewal Quote
+ *              and updates their Renewal Opportunity.
  *
- *              Igual que en la Parte 1, no creamos la Quote a mano: tildamos el campo nativo de
- *              CPQ SBQQ__RenewalQuoted__c y CPQ (SBQQ.ContractAfter) la genera en el mismo save,
- *              Primary y con las cantidades actuales (incluidos los Amendments). Verificado en el
+ *              As in Part 1, we do not create the Quote manually: we check CPQ's native field
+ *              SBQQ__RenewalQuoted__c and CPQ (SBQQ.ContractAfter) generates it in the same save,
+ *              Primary and with the current quantities (Amendments included). Verified in the
  *              org (Contract 00000107 -> Q-00085, Type = Renewal).
  *
- *              "Actualizar la Renewal Opportunity" (decisión confirmada): CPQ deja la Opportunity
- *              en Prospecting, así que la pasamos a 'Proposal/Price Quote' para que el forecast
- *              muestre que ya hay una Quote. Solo si sigue en Prospecting: si un vendedor ya la
- *              avanzó o la cerró, no la pisamos.
+ *              "Update the Renewal Opportunity" (confirmed decision): CPQ leaves the Opportunity
+ *              in Prospecting, so we move it to 'Proposal/Price Quote' so the forecast shows
+ *              that there is already a Quote. Only if it is still in Prospecting: if a sales rep
+ *              already moved it forward or closed it, we do not override it.
  *
- *              Ventana "30 días o menos" (y no "exactamente 30"): si el job falla una noche, o si
- *              un Contract se activa cuando ya le quedan menos de 30 días, la noche siguiente lo
- *              procesa igual. SBQQ__RenewalQuoted__c = true funciona como marca de "ya procesado",
- *              así que un Contract nunca se procesa dos veces.
+ *              Window "30 days or less" (and not "exactly 30"): if the job fails one night, or if
+ *              a Contract is activated when it already has less than 30 days left, the next night
+ *              still processes it. SBQQ__RenewalQuoted__c = true works as an "already processed"
+ *              mark, so a Contract is never processed twice.
  *
- *              Se ejecuta con tandas de 1 Contract (RenewalQuoteScheduler.BATCH_SIZE): CPQ encola
- *              un Queueable de cálculo por cada Renewal Quote, y desde un Batch solo se puede
- *              encolar 1 por execute.
+ *              The Status filter reuses ContractTriggerHandler.STATUS_ACTIVATED (DRY: the
+ *              'Activated' value is defined only once).
  *
- * Requirement DEV #3 (textual, segunda parte): "In addition, 30 days before the end of a
+ *              It runs with chunks of 1 Contract (RenewalQuoteScheduler.BATCH_SIZE): CPQ enqueues
+ *              one calculation Queueable per Renewal Quote, and from a Batch only 1 can be
+ *              enqueued per execute.
+ *
+ * Requirement DEV #3 (verbatim, second part): "In addition, 30 days before the end of a
  * Contract, I would like the Renewal Opportunity to be updated and a Renewal Quote generated so
  * that my team can start preparing for the renewal sale."
- * Partes del requirement y dónde se cubren:
- *   (C) "30 days before the end of a Contract"     -> start: Activated, EndDate entre hoy y hoy + 30
+ * Requirement parts and where they are covered:
+ *   (C) "30 days before the end of a Contract"     -> start: Activated, EndDate between today and today + 30
  *   (D) "a Renewal Quote generated"                -> requestRenewalQuotes (SBQQ__RenewalQuoted__c = true)
  *   (E) "the Renewal Opportunity to be updated"    -> updateRenewalOpportunityStage
  */
 public with sharing class RenewalQuoteBatch implements Database.Batchable<SObject> {
 
-    public static final String STATUS_ACTIVATED = 'Activated';
-
-    // Req (C): días antes del fin del Contract
+    // Req (C): days before the end of the Contract
     public static final Integer DAYS_BEFORE_END = 30;
 
-    // Req (E): etapa con la que CPQ crea la Renewal Opportunity y etapa a la que la pasamos
+    // Req (E): stage CPQ creates the Renewal Opportunity with, and stage we move it to
     public static final String STAGE_PROSPECTING = 'Prospecting';
     public static final String STAGE_PROPOSAL = 'Proposal/Price Quote';
 
     private static final String CLASS_NAME = 'RenewalQuoteBatch';
 
     /**
-     * @description Req (C). Trae los Contracts activados que vencen entre hoy y hoy + 30 y que
-     *              todavía no tienen Renewal Quote. Los vencidos (EndDate < hoy) y los evergreen
-     *              (sin EndDate) quedan afuera (supuestos confirmados).
-     * @param bc Contexto del Batch (lo pasa Salesforce)
-     * @return QueryLocator con los Contracts a procesar
+     * @description Req (C). Gets the activated Contracts that end between today and today + 30 and
+     *              that do not have a Renewal Quote yet. Expired ones (EndDate < today) and evergreen
+     *              ones (no EndDate) are left out (confirmed assumptions).
+     * @param bc Batch context (passed by Salesforce)
+     * @return QueryLocator with the Contracts to process
      */
     public Database.QueryLocator start( Database.BatchableContext bc ) {
         Date today = Date.today();
@@ -56,7 +57,7 @@ public with sharing class RenewalQuoteBatch implements Database.Batchable<SObjec
         return Database.getQueryLocator( [
             SELECT Id
             FROM Contract
-            WHERE Status = :STATUS_ACTIVATED
+            WHERE Status = :ContractTriggerHandler.STATUS_ACTIVATED
             AND SBQQ__RenewalQuoted__c = false
             AND EndDate >= :today
             AND EndDate <= :windowEndDate
@@ -64,11 +65,11 @@ public with sharing class RenewalQuoteBatch implements Database.Batchable<SObjec
     }
 
     /**
-     * @description Se ejecuta una vez por cada tanda (de 1 Contract, ver BATCH_SIZE). Primero
-     *              genera las Renewal Quotes y después actualiza las Opportunities de los
-     *              Contracts que se guardaron bien.
-     * @param bc           Contexto del Batch
-     * @param contractList Contracts de esta tanda
+     * @description Runs once for each chunk (of 1 Contract, see BATCH_SIZE). First it
+     *              generates the Renewal Quotes and then it updates the Opportunities of the
+     *              Contracts that were saved successfully.
+     * @param bc           Batch context
+     * @param contractList Contracts in this chunk
      */
     public void execute( Database.BatchableContext bc, List<Contract> contractList ) {
         Set<Id> quotedContractIdSet = requestRenewalQuotes( contractList );
@@ -76,22 +77,22 @@ public with sharing class RenewalQuoteBatch implements Database.Batchable<SObjec
     }
 
     /**
-     * @description No hay nada que hacer al terminar: los errores ya se guardaron en cada tanda.
-     * @param bc Contexto del Batch
+     * @description Nothing to do at the end: the errors were already saved in each chunk.
+     * @param bc Batch context
      */
     public void finish( Database.BatchableContext bc ) {
-        // Vacío a propósito: la interfaz Database.Batchable obliga a tener este método
+        // Empty on purpose: the Database.Batchable interface requires this method
     }
 
     /**
-     * @description Req (D). Tilda SBQQ__RenewalQuoted__c para que CPQ genere la Renewal Quote.
-     *              También tilda SBQQ__RenewalForecast__c como red de seguridad: si el Contract
-     *              se activó antes de que existiera el trigger (o la Parte 1 falló), CPQ crea
-     *              la Opportunity y la Quote en el mismo save.
-     *              Un solo update para toda la tanda; con allOrNone = false, si uno falla los
-     *              demás se guardan igual y el error queda en Error_Log__c.
-     * @param contractList Contracts de esta tanda
-     * @return Ids de los Contracts que se guardaron bien (solo esos tienen Renewal Quote)
+     * @description Req (D). Checks SBQQ__RenewalQuoted__c so CPQ generates the Renewal Quote.
+     *              It also checks SBQQ__RenewalForecast__c as a safety net: if the Contract
+     *              was activated before the trigger existed (or Part 1 failed), CPQ creates
+     *              the Opportunity and the Quote in the same save.
+     *              A single update for the whole chunk; with allOrNone = false, if one fails the
+     *              others are still saved and the error is stored in Error_Log__c.
+     * @param contractList Contracts in this chunk
+     * @return Ids of the Contracts that were saved successfully (only those have a Renewal Quote)
      */
     private static Set<Id> requestRenewalQuotes( List<Contract> contractList ) {
         for ( Contract con : contractList ) {
@@ -100,7 +101,7 @@ public with sharing class RenewalQuoteBatch implements Database.Batchable<SObjec
         }
         List<Database.SaveResult> resultList = Database.update( contractList, false );
 
-        // Los resultados vuelven en el mismo orden que la lista: se recorren por posición
+        // The results come back in the same order as the list: they are read by position
         Set<Id> quotedContractIdSet = new Set<Id>();
         for ( Integer i = 0; i < resultList.size(); i++ ) {
             if ( resultList[i].isSuccess() ) {
@@ -112,17 +113,17 @@ public with sharing class RenewalQuoteBatch implements Database.Batchable<SObjec
     }
 
     /**
-     * @description Req (E). Pasa a 'Proposal/Price Quote' las Renewal Opportunities de estos
-     *              Contracts que siguen en Prospecting. Una query y un update para toda la tanda.
-     * @param quotedContractIdSet Contracts que ya tienen su Renewal Quote
+     * @description Req (E). Moves to 'Proposal/Price Quote' the Renewal Opportunities of these
+     *              Contracts that are still in Prospecting. One query and one update for the whole chunk.
+     * @param quotedContractIdSet Contracts that already have their Renewal Quote
      */
     private static void updateRenewalOpportunityStage( Set<Id> quotedContractIdSet ) {
-        // Condicional antes de la SOQL: si ningún Contract se guardó bien, no hay nada que actualizar
+        // Condition before the SOQL: if no Contract was saved successfully, there is nothing to update
         if ( quotedContractIdSet.isEmpty() ) {
             return;
         }
 
-        // SBQQ__RenewedContract__c: el Contract que renueva esta Opportunity (lo completa CPQ)
+        // SBQQ__RenewedContract__c: the Contract this Opportunity renews (filled in by CPQ)
         List<Opportunity> opportunityToUpdateList = new List<Opportunity>();
         for ( Opportunity opp : [
             SELECT Id, StageName
@@ -142,11 +143,11 @@ public with sharing class RenewalQuoteBatch implements Database.Batchable<SObjec
     }
 
     /**
-     * @description Arma un Error_Log__c por cada registro que no se pudo guardar y los guarda con
-     *              un solo insert. Lo usan los dos updates del Batch (DRY).
-     * @param resultList    Resultados del Database.update
-     * @param recordList    Registros que se intentaron guardar (en el mismo orden que resultList)
-     * @param messagePrefix Texto que explica qué falló
+     * @description Builds an Error_Log__c for each record that could not be saved and saves them
+     *              with a single insert. Both updates of the Batch use it (DRY).
+     * @param resultList    Results of Database.update
+     * @param recordList    Records that were sent to save (in the same order as resultList)
+     * @param messagePrefix Text that explains what failed
      */
     private static void saveLogsForFailures( List<Database.SaveResult> resultList, List<SObject> recordList, String messagePrefix ) {
         List<Error_Log__c> errorLogList = new List<Error_Log__c>();

@@ -1,11 +1,11 @@
 /**
- * @description Tests del DEV #4: ActiveSubscriptionCounter, la regla de "activa" y los Amendments.
- *              Las Subscriptions se insertan de verdad, así que el SubscriptionTrigger llama al
- *              recuento solo (es el camino real). Al final se lee el número guardado en el Contract.
+ * @description Tests for DEV #4: ActiveSubscriptionCounter, the "active" rule and the Amendments.
+ *              The Subscriptions are really inserted, so SubscriptionTrigger calls the
+ *              recount by itself (it is the real path). At the end the number saved on the Contract is read.
  *
- *              Las revisiones de Amendment se arman igual que las que creó CPQ en el org:
- *              un registro nuevo por la diferencia (+100 / -10), con SBQQ__RevisedSubscription__c
- *              apuntando a la Subscription original.
+ *              The Amendment revisions are built the same way CPQ created them in the org:
+ *              a new record for the difference (+100 / -10), with SBQQ__RevisedSubscription__c
+ *              pointing to the original Subscription.
  */
 @IsTest
 private class ActiveSubscriptionCounterTest {
@@ -13,7 +13,7 @@ private class ActiveSubscriptionCounterTest {
     private static final Date TODAY = Date.today();
 
     /**
-     * @description Datos comunes: una Account, un producto y un Contract de 12 meses que empieza hoy.
+     * @description Common data: an Account, a product and a 12-month Contract starting today.
      */
     @testSetup
     static void setup() {
@@ -23,11 +23,11 @@ private class ActiveSubscriptionCounterTest {
     }
 
     // ---------------------------------------------------------------------------------
-    // Definición de "activa" (fechas y terminación)
+    // Definition of "active" (dates and termination)
     // ---------------------------------------------------------------------------------
 
     /**
-     * @description Positivo: Subscription sin fechas propias (toma las del Contract, vigente) -> cuenta 1.
+     * @description Positive: Subscription without its own dates (it takes the Contract dates, in force) -> counts 1.
      */
     @isTest
     static void activeSubscriptionCountsTest() {
@@ -36,11 +36,11 @@ private class ActiveSubscriptionCounterTest {
         Test.stopTest();
 
         System.assertEquals( 1, getActiveCount( getContractId() ),
-            'Una Subscription vigente debería contar 1' );
+            'A Subscription in force should count 1' );
     }
 
     /**
-     * @description Negativo: Subscription que empieza mañana -> todavía no cuenta.
+     * @description Negative: Subscription that starts tomorrow -> it does not count yet.
      */
     @isTest
     static void futureSubscriptionNotCountedTest() {
@@ -52,11 +52,11 @@ private class ActiveSubscriptionCounterTest {
         Test.stopTest();
 
         System.assertEquals( 0, getActiveCount( getContractId() ),
-            'Una Subscription que empieza mañana no debería contar hoy' );
+            'A Subscription that starts tomorrow should not count today' );
     }
 
     /**
-     * @description Negativo y borde: una vencida ayer no cuenta; una que vence HOY todavía cuenta.
+     * @description Negative and edge case: one that ended yesterday does not count; one that ends TODAY still counts.
      */
     @isTest
     static void endDateBoundaryTest() {
@@ -69,11 +69,11 @@ private class ActiveSubscriptionCounterTest {
         Test.stopTest();
 
         System.assertEquals( 1, getActiveCount( getContractId() ),
-            'Solo debería contar la que vence hoy: la vencida ayer ya no está activa' );
+            'Only the one ending today should count: the one that ended yesterday is no longer active' );
     }
 
     /**
-     * @description Negativo y borde: terminada hoy no cuenta; terminada a partir de mañana todavía cuenta.
+     * @description Negative and edge case: terminated today does not count; terminated from tomorrow still counts.
      */
     @isTest
     static void terminatedDateBoundaryTest() {
@@ -86,11 +86,11 @@ private class ActiveSubscriptionCounterTest {
         Test.stopTest();
 
         System.assertEquals( 1, getActiveCount( getContractId() ),
-            'Solo debería contar la que se termina mañana: la terminada hoy ya no está activa' );
+            'Only the one terminated tomorrow should count: the one terminated today is no longer active' );
     }
 
     /**
-     * @description Positivo: Contract evergreen (sin plazo ni fecha de fin) -> la Subscription cuenta.
+     * @description Positive: evergreen Contract (no term and no end date) -> the Subscription counts.
      */
     @isTest
     static void evergreenContractTest() {
@@ -101,16 +101,16 @@ private class ActiveSubscriptionCounterTest {
         Test.stopTest();
 
         System.assertEquals( 1, getActiveCount( evergreenContract.Id ),
-            'Sin fecha de fin la Subscription no vence, así que debería contar' );
+            'Without an end date the Subscription does not expire, so it should count' );
     }
 
     // ---------------------------------------------------------------------------------
-    // Amendments (opción C: una por Subscription original con cantidad neta > 0)
+    // Amendments (option C: one per original Subscription with net quantity > 0)
     // ---------------------------------------------------------------------------------
 
     /**
-     * @description Caso de la demo: original 125, Amendment +100 y Amendment -10, ya vigentes
-     *              -> 125 + 100 - 10 = 215 > 0 -> cuenta 1 (no 3).
+     * @description Demo case: original 125, Amendment +100 and Amendment -10, already in force
+     *              -> 125 + 100 - 10 = 215 > 0 -> counts 1 (not 3).
      */
     @isTest
     static void amendmentRevisionsCountOnceTest() {
@@ -122,11 +122,11 @@ private class ActiveSubscriptionCounterTest {
         Test.stopTest();
 
         System.assertEquals( 1, getActiveCount( getContractId() ),
-            'Las revisiones de Amendment cambian la cantidad de la original: debería contar 1, no 3' );
+            'The Amendment revisions change the quantity of the original: it should count 1, not 3' );
     }
 
     /**
-     * @description Negativo: un Amendment baja la cantidad a 0 (125 - 125) -> deja de contar.
+     * @description Negative: an Amendment brings the quantity down to 0 (125 - 125) -> it stops counting.
      */
     @isTest
     static void fullCancellationNotCountedTest() {
@@ -137,11 +137,11 @@ private class ActiveSubscriptionCounterTest {
         Test.stopTest();
 
         System.assertEquals( 0, getActiveCount( getContractId() ),
-            'Con cantidad neta 0 la Subscription ya no está activa' );
+            'With a net quantity of 0 the Subscription is no longer active' );
     }
 
     /**
-     * @description Borde: la baja total empieza mañana -> hoy la Subscription todavía cuenta.
+     * @description Edge case: the full cancellation starts tomorrow -> today the Subscription still counts.
      */
     @isTest
     static void futureCancellationStillCountsTest() {
@@ -152,15 +152,15 @@ private class ActiveSubscriptionCounterTest {
         Test.stopTest();
 
         System.assertEquals( 1, getActiveCount( getContractId() ),
-            'La baja todavía no empezó: hoy la Subscription sigue activa' );
+            'The cancellation has not started yet: today the Subscription is still active' );
     }
 
     // ---------------------------------------------------------------------------------
-    // Eficiencia
+    // Efficiency
     // ---------------------------------------------------------------------------------
 
     /**
-     * @description Negativo: sin Contracts no se gasta ninguna query.
+     * @description Negative: without Contracts no query is spent.
      */
     @isTest
     static void emptySetSkipsQueryTest() {
@@ -169,11 +169,11 @@ private class ActiveSubscriptionCounterTest {
         Integer queryCount = Limits.getQueries();
         Test.stopTest();
 
-        System.assertEquals( 0, queryCount, 'Con un Set vacío no debería hacerse ninguna query' );
+        System.assertEquals( 0, queryCount, 'With an empty Set no query should run' );
     }
 
     /**
-     * @description Negativo: si el número guardado ya es el correcto, no se hace update.
+     * @description Negative: if the saved number is already correct, no update is done.
      */
     @isTest
     static void unchangedCountSkipsUpdateTest() {
@@ -184,8 +184,8 @@ private class ActiveSubscriptionCounterTest {
         Integer dmlCount = Limits.getDmlStatements();
         Test.stopTest();
 
-        System.assertEquals( 0, dmlCount, 'Si el número no cambió no debería hacerse ningún update' );
-        System.assertEquals( 1, getActiveCount( getContractId() ), 'El número debería seguir en 1' );
+        System.assertEquals( 0, dmlCount, 'If the number did not change no update should run' );
+        System.assertEquals( 1, getActiveCount( getContractId() ), 'The number should stay at 1' );
     }
 
     // ---------------------------------------------------------------------------------
@@ -198,7 +198,7 @@ private class ActiveSubscriptionCounterTest {
         return subList[0];
     }
 
-    // Revisión de Amendment: misma estructura que las que creó CPQ en el org (SUB-0000012 / 13)
+    // Amendment revision: same structure as the ones CPQ created in the org (SUB-0000012 / 13)
     private static List<SBQQ__Subscription__c> buildRevision( Id originalId, Decimal quantity, Date startDate ) {
         List<SBQQ__Subscription__c> subList = TestDataFactory.buildSubscriptions( getContractId(), getProductId(), 1, quantity );
         subList[0].SBQQ__RevisedSubscription__c = originalId;
@@ -214,7 +214,7 @@ private class ActiveSubscriptionCounterTest {
         return [SELECT Id FROM Product2 LIMIT 1].Id;
     }
 
-    // El Contract del @testSetup es el único con plazo de 12 meses
+    // The @testSetup Contract is the only one with a 12-month term
     private static Id getContractId() {
         return [SELECT Id FROM Contract WHERE ContractTerm = 12 LIMIT 1].Id;
     }

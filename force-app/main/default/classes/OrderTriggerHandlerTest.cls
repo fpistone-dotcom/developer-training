@@ -1,8 +1,8 @@
 /**
- * @description Tests del DEV #2: OrderTrigger, OrderTriggerHandler y OrderActivationQueueable.
- *              Cubre casos positivos, negativos y bulk (200 registros) de los dos caminos:
- *              - Insert: la activación la hace el Queueable, que en un test corre en Test.stopTest().
- *              - Update: la activación ocurre en el momento (before update).
+ * @description Tests for DEV #2: OrderTrigger, OrderTriggerHandler and OrderActivationQueueable.
+ *              Covers positive, negative and bulk (200 records) cases of both paths:
+ *              - Insert: the activation is done by the Queueable, which in a test runs in Test.stopTest().
+ *              - Update: the activation happens right away (before update).
  */
 @IsTest
 private class OrderTriggerHandlerTest {
@@ -10,7 +10,7 @@ private class OrderTriggerHandlerTest {
     private static final Integer BULK_SIZE = 200;
 
     /**
-     * @description Datos comunes para todos los tests: una Account y un producto con precio.
+     * @description Common data for all the tests: an Account and a product with a price.
      */
     @testSetup
     static void setup() {
@@ -19,12 +19,12 @@ private class OrderTriggerHandlerTest {
     }
 
     // ---------------------------------------------------------------------------------
-    // Camino INSERT (Req B)
+    // INSERT path (Req B)
     // ---------------------------------------------------------------------------------
 
     /**
-     * @description Positivo: una Order que se crea con 'Not Needed' y tiene productos
-     *              queda activada cuando corre el Queueable.
+     * @description Positive: an Order created with 'Not Needed' that has products
+     *              is activated when the Queueable runs.
      */
     @isTest
     static void activateOnInsertTest() {
@@ -33,14 +33,14 @@ private class OrderTriggerHandlerTest {
         Test.startTest();
         insert orderList;
         insert TestDataFactory.buildOrderItems( orderList, getPricebookEntry() );
-        Test.stopTest(); // acá corre el Queueable
+        Test.stopTest(); // the Queueable runs here
 
         Order result = [SELECT Status FROM Order WHERE Id = :orderList[0].Id];
-        System.assertEquals( 'Activated', result.Status, 'La Order creada con Not Needed y con productos debería quedar Activated' );
+        System.assertEquals( 'Activated', result.Status, 'The Order created with Not Needed and with products should be Activated' );
     }
 
     /**
-     * @description Bulk: 200 Orders creadas juntas se activan con un solo Queueable.
+     * @description Bulk: 200 Orders created together are activated with a single Queueable.
      */
     @isTest
     static void activateOnInsertBulkTest() {
@@ -52,12 +52,12 @@ private class OrderTriggerHandlerTest {
         Test.stopTest();
 
         Integer activatedCount = [SELECT COUNT() FROM Order WHERE Status = 'Activated'];
-        System.assertEquals( BULK_SIZE, activatedCount, 'Las 200 Orders deberían quedar Activated' );
+        System.assertEquals( BULK_SIZE, activatedCount, 'The 200 Orders should be Activated' );
     }
 
     /**
-     * @description Negativo: una Order creada con un status que no está listo ('Queued')
-     *              no se activa.
+     * @description Negative: an Order created with a status that is not ready ('Queued')
+     *              is not activated.
      */
     @isTest
     static void notActivatedOnInsertWhenNotReadyTest() {
@@ -69,12 +69,12 @@ private class OrderTriggerHandlerTest {
         Test.stopTest();
 
         Order result = [SELECT Status FROM Order WHERE Id = :orderList[0].Id];
-        System.assertEquals( 'Draft', result.Status, 'Una Order con status Queued no debería activarse' );
+        System.assertEquals( 'Draft', result.Status, 'An Order with Queued status should not be activated' );
     }
 
     /**
-     * @description Negativo: una Order creada con 'Not Needed' pero sin productos no se
-     *              activa (Salesforce no lo permite y el Queueable la saltea).
+     * @description Negative: an Order created with 'Not Needed' but without products is not
+     *              activated (Salesforce does not allow it and the Queueable skips it).
      */
     @isTest
     static void notActivatedOnInsertWithoutItemsTest() {
@@ -85,20 +85,20 @@ private class OrderTriggerHandlerTest {
         Test.stopTest();
 
         Order result = [SELECT Status FROM Order WHERE Id = :orderList[0].Id];
-        System.assertEquals( 'Draft', result.Status, 'Una Order sin productos no debería activarse' );
-        System.assertEquals( 0, [SELECT COUNT() FROM Error_Log__c], 'No debería registrarse ningún error: la Order se saltea, no falla' );
+        System.assertEquals( 'Draft', result.Status, 'An Order without products should not be activated' );
+        System.assertEquals( 0, [SELECT COUNT() FROM Error_Log__c], 'No error should be logged: the Order is skipped, it does not fail' );
     }
 
     /**
-     * @description Edge case: si ya no se pueden encolar más Queueables, no se rompe la
-     *              creación de la Order y se registra un Error Log.
+     * @description Edge case: if no more Queueables can be enqueued, the Order creation
+     *              does not break and an Error Log is recorded.
      */
     @isTest
     static void logErrorWhenQueueableLimitReachedTest() {
         List<Order> orderList = TestDataFactory.buildOrders( getAccountId(), 1, 'Not Needed' );
 
         Test.startTest();
-        // Llenamos el cupo de Queueables de la transacción con jobs vacíos
+        // Fill the transaction's Queueable quota with empty jobs
         Integer queueableLimit = Limits.getLimitQueueableJobs();
         for ( Integer i = 0; i < queueableLimit; i++ ) {
             System.enqueueJob( new OrderActivationQueueable( new Set<Id>() ) );
@@ -106,18 +106,18 @@ private class OrderTriggerHandlerTest {
         insert orderList;
         Test.stopTest();
 
-        // WITH SYSTEM_MODE: el test verifica el log sin depender de los permisos del usuario que corre el test
+        // WITH SYSTEM_MODE: the test checks the log without depending on the permissions of the user running the test
         List<Error_Log__c> errorLogList = [SELECT Class_Name__c, Record_Id__c FROM Error_Log__c WITH SYSTEM_MODE];
-        System.assertEquals( 1, errorLogList.size(), 'Debería registrarse un Error Log por la Order que no se pudo encolar' );
-        System.assertEquals( 'OrderTriggerHandler', errorLogList[0].Class_Name__c, 'El log debería indicar la clase que lo generó' );
-        System.assertEquals( orderList[0].Id, errorLogList[0].Record_Id__c, 'El log debería apuntar a la Order afectada' );
+        System.assertEquals( 1, errorLogList.size(), 'An Error Log should be recorded for the Order that could not be enqueued' );
+        System.assertEquals( 'OrderTriggerHandler', errorLogList[0].Class_Name__c, 'The log should show the class that created it' );
+        System.assertEquals( orderList[0].Id, errorLogList[0].Record_Id__c, 'The log should point to the affected Order' );
     }
 
     /**
-     * @description Edge case: si Salesforce rechaza la activación dentro del Queueable,
-     *              la Order queda en Draft y el error se registra en Error_Log__c.
-     *              Para provocar la falla, la Order se vincula a un Contract que no está
-     *              activado: Salesforce no permite activar una Order en ese caso.
+     * @description Edge case: if Salesforce rejects the activation inside the Queueable,
+     *              the Order stays in Draft and the error is recorded in Error_Log__c.
+     *              To force the failure, the Order is linked to a Contract that is not
+     *              activated: Salesforce does not allow activating an Order in that case.
      */
     @isTest
     static void logErrorWhenActivationFailsTest() {
@@ -129,24 +129,24 @@ private class OrderTriggerHandlerTest {
         Test.startTest();
         insert orderList;
         insert TestDataFactory.buildOrderItems( orderList, getPricebookEntry() );
-        Test.stopTest(); // acá corre el Queueable y la activación falla
+        Test.stopTest(); // the Queueable runs here and the activation fails
 
         Order result = [SELECT Status FROM Order WHERE Id = :orderList[0].Id];
-        System.assertEquals( 'Draft', result.Status, 'La Order no debería activarse si Salesforce rechaza la activación' );
+        System.assertEquals( 'Draft', result.Status, 'The Order should not be activated if Salesforce rejects the activation' );
 
         List<Error_Log__c> errorLogList = [SELECT Class_Name__c, Record_Id__c FROM Error_Log__c WITH SYSTEM_MODE];
-        System.assertEquals( 1, errorLogList.size(), 'Debería registrarse un Error Log por la activación fallida' );
-        System.assertEquals( 'OrderActivationQueueable', errorLogList[0].Class_Name__c, 'El log debería indicar que falló en el Queueable' );
-        System.assertEquals( orderList[0].Id, errorLogList[0].Record_Id__c, 'El log debería apuntar a la Order que no se pudo activar' );
+        System.assertEquals( 1, errorLogList.size(), 'An Error Log should be recorded for the failed activation' );
+        System.assertEquals( 'OrderActivationQueueable', errorLogList[0].Class_Name__c, 'The log should show that it failed in the Queueable' );
+        System.assertEquals( orderList[0].Id, errorLogList[0].Record_Id__c, 'The log should point to the Order that could not be activated' );
     }
 
     // ---------------------------------------------------------------------------------
-    // Camino UPDATE (Req C)
+    // UPDATE path (Req C)
     // ---------------------------------------------------------------------------------
 
     /**
-     * @description Positivo: una Order con productos cuyo status pasa de 'Queued' a
-     *              'Completed' queda activada en el momento.
+     * @description Positive: an Order with products whose status changes from 'Queued' to
+     *              'Completed' is activated right away.
      */
     @isTest
     static void activateOnUpdateTest() {
@@ -158,11 +158,11 @@ private class OrderTriggerHandlerTest {
         Test.stopTest();
 
         Order result = [SELECT Status FROM Order WHERE Id = :orderList[0].Id];
-        System.assertEquals( 'Activated', result.Status, 'La Order debería activarse al pasar a Completed' );
+        System.assertEquals( 'Activated', result.Status, 'The Order should be activated when it changes to Completed' );
     }
 
     /**
-     * @description Bulk: 200 Orders que pasan a 'Completed' en un mismo update se activan todas.
+     * @description Bulk: 200 Orders that change to 'Completed' in the same update are all activated.
      */
     @isTest
     static void activateOnUpdateBulkTest() {
@@ -176,12 +176,12 @@ private class OrderTriggerHandlerTest {
         Test.stopTest();
 
         Integer activatedCount = [SELECT COUNT() FROM Order WHERE Status = 'Activated'];
-        System.assertEquals( BULK_SIZE, activatedCount, 'Las 200 Orders deberían quedar Activated' );
+        System.assertEquals( BULK_SIZE, activatedCount, 'The 200 Orders should be Activated' );
     }
 
     /**
-     * @description Negativo: si el status cambia a un valor que no está listo ('Failed'),
-     *              la Order no se activa.
+     * @description Negative: if the status changes to a value that is not ready ('Failed'),
+     *              the Order is not activated.
      */
     @isTest
     static void notActivatedOnUpdateToNotReadyValueTest() {
@@ -193,12 +193,12 @@ private class OrderTriggerHandlerTest {
         Test.stopTest();
 
         Order result = [SELECT Status FROM Order WHERE Id = :orderList[0].Id];
-        System.assertEquals( 'Draft', result.Status, 'Una Order que pasa a Failed no debería activarse' );
+        System.assertEquals( 'Draft', result.Status, 'An Order that changes to Failed should not be activated' );
     }
 
     /**
-     * @description Negativo: si el status pasa a 'Completed' pero la Order no tiene
-     *              productos, no se activa y el guardado no falla.
+     * @description Negative: if the status changes to 'Completed' but the Order has no
+     *              products, it is not activated and the save does not fail.
      */
     @isTest
     static void notActivatedOnUpdateWithoutItemsTest() {
@@ -211,21 +211,21 @@ private class OrderTriggerHandlerTest {
         Test.stopTest();
 
         Order result = [SELECT Status FROM Order WHERE Id = :orderList[0].Id];
-        System.assertEquals( 'Draft', result.Status, 'Una Order sin productos no debería activarse' );
+        System.assertEquals( 'Draft', result.Status, 'An Order without products should not be activated' );
     }
 
     /**
-     * @description Negativo: si se edita otro campo y el Price Calculation Status no cambia,
-     *              la Order no se reprocesa aunque ya tenga un valor listo.
+     * @description Negative: if another field is edited and the Price Calculation Status does not change,
+     *              the Order is not reprocessed even if it already has a ready value.
      */
     @isTest
     static void notActivatedWhenPriceCalcStatusDidNotChangeTest() {
-        // Order en Draft con 'Completed' y sin productos: el update a Completed no la activa
+        // Draft Order with 'Completed' and no products: the update to Completed does not activate it
         List<Order> orderList = TestDataFactory.buildOrders( getAccountId(), 1, 'Queued' );
         insert orderList;
         orderList[0].SBQQ__PriceCalcStatus__c = 'Completed';
         update orderList;
-        // Ahora le agregamos productos, sin tocar el status
+        // Now we add products to it, without touching the status
         insert TestDataFactory.buildOrderItems( orderList, getPricebookEntry() );
 
         Test.startTest();
@@ -234,11 +234,11 @@ private class OrderTriggerHandlerTest {
         Test.stopTest();
 
         Order result = [SELECT Status FROM Order WHERE Id = :orderList[0].Id];
-        System.assertEquals( 'Draft', result.Status, 'Si el Price Calculation Status no cambió, la Order no debería reprocesarse' );
+        System.assertEquals( 'Draft', result.Status, 'If the Price Calculation Status did not change, the Order should not be reprocessed' );
     }
 
     // ---------------------------------------------------------------------------------
-    // Métodos de ayuda
+    // Helper methods
     // ---------------------------------------------------------------------------------
 
     private static Id getAccountId() {
@@ -250,10 +250,10 @@ private class OrderTriggerHandlerTest {
     }
 
     /**
-     * @description Inserta Orders con el status indicado y un producto cada una.
-     * @param numberOfOrders  Cantidad de Orders
-     * @param priceCalcStatus Valor de SBQQ__PriceCalcStatus__c
-     * @return Orders insertadas
+     * @description Inserts Orders with the given status and one product each.
+     * @param numberOfOrders  Number of Orders
+     * @param priceCalcStatus Value of SBQQ__PriceCalcStatus__c
+     * @return Inserted Orders
      */
     private static List<Order> insertOrdersWithItems( Integer numberOfOrders, String priceCalcStatus ) {
         List<Order> orderList = TestDataFactory.buildOrders( getAccountId(), numberOfOrders, priceCalcStatus );

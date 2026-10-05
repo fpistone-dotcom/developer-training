@@ -1,6 +1,6 @@
 # Build Tracker — SmartBytes CPQ (DEV #1 a #5)
 
-**Última corrida:** 05/10/2026 16:59 UTC, todos los tests locales (`sf apex run test --test-level RunLocalTests --code-coverage`), Test Run `707fj000016ilRE`.
+**Última corrida:** 05/10/2026 19:14 UTC, todos los tests locales (`sf apex run test --test-level RunLocalTests --code-coverage`), Test Run `707fj000016kYIt`. Corrida del **congelamiento del código** (constante `STATUS_ACTIVATED` unificada + comentarios traducidos al inglés). Deploy validado con dry-run (`0Affj00000TawcfCAB`, 83/83) y aplicado con quick deploy (`0Affj00000Tax45CAB`).
 **Resultado:** 83 métodos de test, **83 pasan, 0 fallan** (Salesforce informa 92 porque cuenta los 9 `@testSetup`).
 **Cobertura del org: 96%.** Mínimo por clase: 91%. Objetivo del Final Assignment: ≥ 85% ✅
 
@@ -37,7 +37,7 @@
 | QuoteTriggerHandler | 205-206, 209, 211-213 | Falla de un email y el `catch` del envío: en un test no se puede hacer fallar `Messaging.sendEmail` |
 | QuoteExpirationBatch | 112-113 | Error Log cuando un recall falla: no se puede forzar con datos de test |
 | ActiveSubscriptionCounter | 151-152 | Error Log cuando falla el update de un Contract |
-| RenewalQuoteBatch | 122, 138, 155-156 | Updates fallidos y `return` de seguridad sin Opportunity en Prospecting |
+| RenewalQuoteBatch | 123, 139, 156-157 | Updates fallidos y `return` de seguridad sin Opportunity en Prospecting |
 
 ## Componentes sin cobertura de Apex (probados en el org)
 

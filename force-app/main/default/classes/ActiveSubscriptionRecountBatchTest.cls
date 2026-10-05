@@ -1,7 +1,7 @@
 /**
- * @description Tests del DEV #4: ActiveSubscriptionRecountBatch (camino nocturno).
- *              En un test, el Batch corre completo en Test.stopTest() y su execute() se
- *              ejecuta una sola vez (por eso el bulk usa 200 Contracts, el tamaño de una tanda).
+ * @description Tests for DEV #4: ActiveSubscriptionRecountBatch (nightly path).
+ *              In a test, the whole Batch runs in Test.stopTest() and its execute() runs
+ *              only once (that is why the bulk test uses 200 Contracts, the size of one chunk).
  */
 @IsTest
 private class ActiveSubscriptionRecountBatchTest {
@@ -9,7 +9,7 @@ private class ActiveSubscriptionRecountBatchTest {
     private static final Integer BULK_SIZE = 200;
 
     /**
-     * @description Datos comunes: una Account y un producto.
+     * @description Common data: an Account and a product.
      */
     @testSetup
     static void setup() {
@@ -18,35 +18,35 @@ private class ActiveSubscriptionRecountBatchTest {
     }
 
     /**
-     * @description El problema del tiempo: la Subscription vence SIN que nadie la edite (acá se
-     *              simula moviendo el Contract al pasado: la Subscription toma la fecha de fin del
-     *              Contract). El trigger no se entera y el Contract sigue diciendo 1 -> el Batch
-     *              lo corrige a 0.
+     * @description The time problem: the Subscription expires WITHOUT anyone editing it (here it is
+     *              simulated by moving the Contract to the past: the Subscription takes the Contract
+     *              end date). The trigger never finds out and the Contract still says 1 -> the Batch
+     *              fixes it to 0.
      */
     @isTest
     static void expiredByTimeTest() {
         Contract con = TestDataFactory.createContract( getAccountId(), Date.today(), 12 );
         insert TestDataFactory.buildSubscriptions( con.Id, getProductId(), 1, 125 );
-        System.assertEquals( 1, getActiveCount( con.Id ), 'Antes del vencimiento debería contar 1' );
+        System.assertEquals( 1, getActiveCount( con.Id ), 'Before expiring it should count 1' );
 
-        // Contract de 1 mes que empezó hace 60 días: ya terminó, y la Subscription con él
+        // 1-month Contract that started 60 days ago: it has already ended, and the Subscription with it
         con.StartDate = Date.today().addDays( -60 );
         con.ContractTerm = 1;
         update con;
         System.assertEquals( 1, getActiveCount( con.Id ),
-            'Sin el Batch el número queda desactualizado (por eso hace falta el job nocturno)' );
+            'Without the Batch the number stays outdated (that is why the nightly job is needed)' );
 
         Test.startTest();
         Database.executeBatch( new ActiveSubscriptionRecountBatch() );
         Test.stopTest();
 
         System.assertEquals( 0, getActiveCount( con.Id ),
-            'El Batch debería detectar que la Subscription venció y dejar el Contract en 0' );
+            'The Batch should detect that the Subscription expired and set the Contract to 0' );
     }
 
     /**
-     * @description Backfill / corrección: el Contract tiene un número incorrecto (7) -> el Batch
-     *              lo deja en el valor real (1).
+     * @description Backfill / correction: the Contract has a wrong number (7) -> the Batch
+     *              sets it to the real value (1).
      */
     @isTest
     static void fixWrongCountTest() {
@@ -58,16 +58,16 @@ private class ActiveSubscriptionRecountBatchTest {
         Database.executeBatch( new ActiveSubscriptionRecountBatch() );
         Test.stopTest();
 
-        System.assertEquals( 1, getActiveCount( con.Id ), 'El Batch debería corregir el número a 1' );
-        System.assertEquals( 0, [SELECT COUNT() FROM Error_Log__c], 'No debería generarse ningún Error Log' );
+        System.assertEquals( 1, getActiveCount( con.Id ), 'The Batch should fix the number to 1' );
+        System.assertEquals( 0, [SELECT COUNT() FROM Error_Log__c], 'No Error Log should be created' );
     }
 
     /**
-     * @description Bulk: 200 Contracts sin Subscriptions con un número viejo (5) -> los 200 quedan en 0.
+     * @description Bulk: 200 Contracts without Subscriptions with an old number (5) -> all 200 end up at 0.
      */
     @isTest
     static void bulkRecountTest() {
-        // La query va afuera del for: adentro serían 200 queries y se pasa del límite de 100
+        // The query goes outside the for: inside it would be 200 queries and go over the 100 limit
         Id accountId = getAccountId();
         List<Contract> contractList = new List<Contract>();
         for ( Integer i = 0; i < BULK_SIZE; i++ ) {
@@ -86,7 +86,7 @@ private class ActiveSubscriptionRecountBatchTest {
         Test.stopTest();
 
         Integer zeroCount = [SELECT COUNT() FROM Contract WHERE Active_Subscriptions__c = 0];
-        System.assertEquals( BULK_SIZE, zeroCount, 'Los 200 Contracts sin Subscriptions deberían quedar en 0' );
+        System.assertEquals( BULK_SIZE, zeroCount, 'The 200 Contracts without Subscriptions should end up at 0' );
     }
 
     // ---------------------------------------------------------------------------------

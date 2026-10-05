@@ -1,15 +1,15 @@
 /**
- * @description Fábrica de datos de prueba compartida por todas las test classes (DRY).
- *              - Los métodos "create" arman los registros y los insertan.
- *              - Los métodos "build" solo los arman en memoria (sin insert), para que
- *                cada test decida cuándo insertarlos.
+ * @description Test data factory shared by all the test classes (DRY).
+ *              - The "create" methods build the records and insert them.
+ *              - The "build" methods only build them in memory (no insert), so that
+ *                each test decides when to insert them.
  */
 @IsTest
 public class TestDataFactory {
 
     /**
-     * @description Crea e inserta una Account.
-     * @return La Account insertada
+     * @description Creates and inserts an Account.
+     * @return The inserted Account
      */
     public static Account createAccount() {
         Account acc = new Account();
@@ -19,10 +19,10 @@ public class TestDataFactory {
     }
 
     /**
-     * @description Crea e inserta una Opportunity en la etapa indicada.
-     * @param accountId Account de la Opportunity
-     * @param stageName Etapa (por ejemplo 'Prospecting' o 'Closed Won')
-     * @return La Opportunity insertada
+     * @description Creates and inserts an Opportunity in the given stage.
+     * @param accountId Account of the Opportunity
+     * @param stageName Stage (for example 'Prospecting' or 'Closed Won')
+     * @return The inserted Opportunity
      */
     public static Opportunity createOpportunity( Id accountId, String stageName ) {
         Opportunity opp = new Opportunity();
@@ -35,8 +35,8 @@ public class TestDataFactory {
     }
 
     /**
-     * @description Crea e inserta un Product2 activo.
-     * @return El Product2 insertado
+     * @description Creates and inserts an active Product2.
+     * @return The inserted Product2
      */
     public static Product2 createProduct() {
         Product2 product = new Product2();
@@ -47,10 +47,10 @@ public class TestDataFactory {
     }
 
     /**
-     * @description Crea un Product2 y su precio en el Pricebook estándar.
-     *              Test.getStandardPricebookId() nos da el Id del Pricebook estándar
-     *              dentro del test, sin necesidad de ver los datos reales del org.
-     * @return El PricebookEntry insertado
+     * @description Creates a Product2 and its price in the standard Pricebook.
+     *              Test.getStandardPricebookId() gives us the standard Pricebook Id
+     *              inside the test, without needing to see the real org data.
+     * @return The inserted PricebookEntry
      */
     public static PricebookEntry createPricebookEntry() {
         Product2 product = createProduct();
@@ -65,9 +65,9 @@ public class TestDataFactory {
     }
 
     /**
-     * @description Crea e inserta un Contract en Draft (no activado).
-     * @param accountId Account del Contract
-     * @return El Contract insertado
+     * @description Creates and inserts a Draft Contract (not activated).
+     * @param accountId Account of the Contract
+     * @return The inserted Contract
      */
     public static Contract createDraftContract( Id accountId ) {
         Contract draftContract = new Contract();
@@ -80,13 +80,13 @@ public class TestDataFactory {
     }
 
     /**
-     * @description Crea e inserta un Contract en Draft con el inicio y el plazo indicados.
-     *              La fecha de fin la calcula Salesforce (inicio + plazo en meses - 1 día).
-     *              Con contractTerm = null el Contract queda sin fecha de fin (evergreen).
-     * @param accountId    Account del Contract
-     * @param startDate    Fecha de inicio
-     * @param contractTerm Plazo en meses (puede ser null)
-     * @return El Contract insertado
+     * @description Creates and inserts a Draft Contract with the given start date and term.
+     *              Salesforce calculates the end date (start + term in months - 1 day).
+     *              With contractTerm = null the Contract has no end date (evergreen).
+     * @param accountId    Account of the Contract
+     * @param startDate    Start date
+     * @param contractTerm Term in months (can be null)
+     * @return The inserted Contract
      */
     public static Contract createContract( Id accountId, Date startDate, Integer contractTerm ) {
         Contract con = buildContracts( accountId, startDate, contractTerm, 1 )[0];
@@ -95,14 +95,14 @@ public class TestDataFactory {
     }
 
     /**
-     * @description Arma Contracts en Draft con el inicio y el plazo indicados. No los inserta.
-     *              Salesforce no deja insertar un Contract ya Activated: para activarlo hay que
-     *              insertarlo en Draft y después hacer un update del Status.
-     * @param accountId         Account de los Contracts
-     * @param startDate         Fecha de inicio
-     * @param contractTerm      Plazo en meses (puede ser null: evergreen)
-     * @param numberOfContracts Cantidad de Contracts a armar
-     * @return Lista de Contracts sin insertar
+     * @description Builds Draft Contracts with the given start date and term. It does not insert them.
+     *              Salesforce does not allow inserting a Contract that is already Activated: to
+     *              activate it, it has to be inserted in Draft and then the Status updated.
+     * @param accountId         Account of the Contracts
+     * @param startDate         Start date
+     * @param contractTerm      Term in months (can be null: evergreen)
+     * @param numberOfContracts Number of Contracts to build
+     * @return List of Contracts, not inserted
      */
     public static List<Contract> buildContracts( Id accountId, Date startDate, Integer contractTerm, Integer numberOfContracts ) {
         List<Contract> contractList = new List<Contract>();
@@ -118,12 +118,12 @@ public class TestDataFactory {
     }
 
     /**
-     * @description Arma una Renewal Opportunity por cada Contract, como las que crea CPQ
-     *              (SBQQ__Renewal__c = true y SBQQ__RenewedContract__c = el Contract). No las inserta.
-     * @param accountId    Account de las Opportunities
-     * @param contractList Contracts que renueva cada Opportunity (ya insertados)
-     * @param stageName    Etapa (CPQ las crea en 'Prospecting')
-     * @return Lista de Opportunities sin insertar
+     * @description Builds one Renewal Opportunity per Contract, like the ones CPQ creates
+     *              (SBQQ__Renewal__c = true and SBQQ__RenewedContract__c = the Contract). It does not insert them.
+     * @param accountId    Account of the Opportunities
+     * @param contractList Contracts renewed by each Opportunity (already inserted)
+     * @param stageName    Stage (CPQ creates them in 'Prospecting')
+     * @return List of Opportunities, not inserted
      */
     public static List<Opportunity> buildRenewalOpportunities( Id accountId, List<Contract> contractList, String stageName ) {
         List<Opportunity> opportunityList = new List<Opportunity>();
@@ -141,13 +141,13 @@ public class TestDataFactory {
     }
 
     /**
-     * @description Arma Subscriptions de CPQ en un Contract, sin fechas propias (toman las del
-     *              Contract, como las que crea CPQ en este org). No las inserta.
-     * @param contractId            Contract de las Subscriptions (puede ser null)
-     * @param productId             Producto de las Subscriptions
-     * @param numberOfSubscriptions Cantidad de Subscriptions a armar
-     * @param quantity              Valor de SBQQ__Quantity__c (negativo para una baja de Amendment)
-     * @return Lista de Subscriptions sin insertar
+     * @description Builds CPQ Subscriptions on a Contract, without their own dates (they take the
+     *              Contract dates, like the ones CPQ creates in this org). It does not insert them.
+     * @param contractId            Contract of the Subscriptions (can be null)
+     * @param productId             Product of the Subscriptions
+     * @param numberOfSubscriptions Number of Subscriptions to build
+     * @param quantity              Value of SBQQ__Quantity__c (negative for an Amendment decrease)
+     * @return List of Subscriptions, not inserted
      */
     public static List<SBQQ__Subscription__c> buildSubscriptions( Id contractId, Id productId, Integer numberOfSubscriptions, Decimal quantity ) {
         List<SBQQ__Subscription__c> subscriptionList = new List<SBQQ__Subscription__c>();
@@ -162,11 +162,11 @@ public class TestDataFactory {
     }
 
     /**
-     * @description Arma Orders en Draft con el Price Calculation Status indicado. No las inserta.
-     * @param accountId       Account de las Orders
-     * @param numberOfOrders  Cantidad de Orders a armar
-     * @param priceCalcStatus Valor de SBQQ__PriceCalcStatus__c
-     * @return Lista de Orders sin insertar
+     * @description Builds Draft Orders with the given Price Calculation Status. It does not insert them.
+     * @param accountId       Account of the Orders
+     * @param numberOfOrders  Number of Orders to build
+     * @param priceCalcStatus Value of SBQQ__PriceCalcStatus__c
+     * @return List of Orders, not inserted
      */
     public static List<Order> buildOrders( Id accountId, Integer numberOfOrders, String priceCalcStatus ) {
         List<Order> orderList = new List<Order>();
@@ -183,14 +183,14 @@ public class TestDataFactory {
     }
 
     /**
-     * @description Arma Quotes de CPQ con el Status y el vencimiento indicados. No las inserta.
-     *              El vencimiento se recibe como parámetro para poder distinguirlo del que
-     *              calcula nuestro trigger (hoy + 30), que coincide con el default de CPQ.
-     * @param accountId      Account de las Quotes
-     * @param numberOfQuotes Cantidad de Quotes a armar
-     * @param status         Valor de SBQQ__Status__c
-     * @param expirationDate Valor inicial de SBQQ__ExpirationDate__c
-     * @return Lista de Quotes sin insertar
+     * @description Builds CPQ Quotes with the given Status and expiration date. It does not insert them.
+     *              The expiration date is a parameter so it can be told apart from the one
+     *              our trigger calculates (today + 30), which matches the CPQ default.
+     * @param accountId      Account of the Quotes
+     * @param numberOfQuotes Number of Quotes to build
+     * @param status         Value of SBQQ__Status__c
+     * @param expirationDate Initial value of SBQQ__ExpirationDate__c
+     * @return List of Quotes, not inserted
      */
     public static List<SBQQ__Quote__c> buildQuotes( Id accountId, Integer numberOfQuotes, String status, Date expirationDate ) {
         List<SBQQ__Quote__c> quoteList = new List<SBQQ__Quote__c>();
@@ -205,12 +205,12 @@ public class TestDataFactory {
     }
 
     /**
-     * @description Arma Quote Lines de CPQ en una Quote. No las inserta.
-     *              Al insertarlas, CPQ recalcula el Roll-Up SBQQ__LineItemCount__c de la Quote.
-     * @param quoteId            Quote de las líneas (ya insertada)
-     * @param productId          Producto de las líneas
-     * @param numberOfQuoteLines Cantidad de líneas a armar
-     * @return Lista de Quote Lines sin insertar
+     * @description Builds CPQ Quote Lines on a Quote. It does not insert them.
+     *              When they are inserted, CPQ recalculates the Quote's SBQQ__LineItemCount__c Roll-Up.
+     * @param quoteId            Quote of the lines (already inserted)
+     * @param productId          Product of the lines
+     * @param numberOfQuoteLines Number of lines to build
+     * @return List of Quote Lines, not inserted
      */
     public static List<SBQQ__QuoteLine__c> buildQuoteLines( Id quoteId, Id productId, Integer numberOfQuoteLines ) {
         List<SBQQ__QuoteLine__c> quoteLineList = new List<SBQQ__QuoteLine__c>();
@@ -225,11 +225,11 @@ public class TestDataFactory {
     }
 
     /**
-     * @description Arma un Quote Document de CPQ (el registro que crea "Generate Document -> Save")
-     *              para una Quote. No lo inserta.
-     * @param quoteId       Quote del documento (ya insertada)
-     * @param opportunityId Opportunity del documento (puede ser null)
-     * @return Quote Document sin insertar
+     * @description Builds a CPQ Quote Document (the record created by "Generate Document -> Save")
+     *              for a Quote. It does not insert it.
+     * @param quoteId       Quote of the document (already inserted)
+     * @param opportunityId Opportunity of the document (can be null)
+     * @return Quote Document, not inserted
      */
     public static SBQQ__QuoteDocument__c buildQuoteDocument( Id quoteId, Id opportunityId ) {
         SBQQ__QuoteDocument__c quoteDocument = new SBQQ__QuoteDocument__c();
@@ -240,11 +240,11 @@ public class TestDataFactory {
     }
 
     /**
-     * @description Arma un Order Product por cada Order. No los inserta.
-     *              Las Orders ya tienen que estar insertadas (se necesita su Id).
-     * @param orderList      Orders que van a recibir el producto
-     * @param pricebookEntry Precio del producto a agregar
-     * @return Lista de OrderItems sin insertar
+     * @description Builds one Order Product per Order. It does not insert them.
+     *              The Orders must already be inserted (their Id is needed).
+     * @param orderList      Orders that will get the product
+     * @param pricebookEntry Price of the product to add
+     * @return List of OrderItems, not inserted
      */
     public static List<OrderItem> buildOrderItems( List<Order> orderList, PricebookEntry pricebookEntry ) {
         List<OrderItem> orderItemList = new List<OrderItem>();

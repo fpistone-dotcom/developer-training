@@ -1,11 +1,11 @@
 /**
- * @description Tests de ErrorLogUtil: armar logs y guardarlos con un solo insert.
+ * @description Tests for ErrorLogUtil: build logs and save them with a single insert.
  */
 @IsTest
 private class ErrorLogUtilTest {
 
     /**
-     * @description Positivo: los logs armados con buildLog se guardan con sus datos.
+     * @description Positive: the logs built with buildLog are saved with their data.
      */
     @isTest
     static void saveLogsTest() {
@@ -17,26 +17,26 @@ private class ErrorLogUtilTest {
         ErrorLogUtil.saveLogs( errorLogList );
         Test.stopTest();
 
-        // WITH SYSTEM_MODE: el test verifica el log sin depender de los permisos del usuario que corre el test
+        // WITH SYSTEM_MODE: the test checks the log without depending on the permissions of the user running the test
         List<Error_Log__c> savedLogList = [
             SELECT Class_Name__c, Error_Message__c
             FROM Error_Log__c
             WITH SYSTEM_MODE
         ];
-        System.assertEquals( 2, savedLogList.size(), 'Deberían guardarse los 2 logs' );
+        System.assertEquals( 2, savedLogList.size(), 'The 2 logs should be saved' );
 
-        // Los campos Long Text no se pueden ordenar en SOQL, así que juntamos los mensajes en un Set
+        // Long Text fields cannot be sorted in SOQL, so we collect the messages in a Set
         Set<String> savedMessageSet = new Set<String>();
         for ( Error_Log__c savedLog : savedLogList ) {
-            System.assertEquals( 'SomeClass', savedLog.Class_Name__c, 'El log debería guardar el nombre de la clase' );
+            System.assertEquals( 'SomeClass', savedLog.Class_Name__c, 'The log should store the class name' );
             savedMessageSet.add( savedLog.Error_Message__c );
         }
-        System.assert( savedMessageSet.contains( 'First error' ), 'Debería guardarse el primer mensaje' );
-        System.assert( savedMessageSet.contains( 'Second error' ), 'Debería guardarse el segundo mensaje' );
+        System.assert( savedMessageSet.contains( 'First error' ), 'The first message should be saved' );
+        System.assert( savedMessageSet.contains( 'Second error' ), 'The second message should be saved' );
     }
 
     /**
-     * @description Negativo: con una lista vacía no se hace ningún insert ni falla.
+     * @description Negative: with an empty list no insert is done and nothing fails.
      */
     @isTest
     static void saveLogsEmptyListTest() {
@@ -44,6 +44,6 @@ private class ErrorLogUtilTest {
         ErrorLogUtil.saveLogs( new List<Error_Log__c>() );
         Test.stopTest();
 
-        System.assertEquals( 0, [SELECT COUNT() FROM Error_Log__c], 'Con una lista vacía no debería guardarse nada' );
+        System.assertEquals( 0, [SELECT COUNT() FROM Error_Log__c], 'With an empty list nothing should be saved' );
     }
 }

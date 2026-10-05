@@ -1,9 +1,9 @@
 /**
- * @description DEV #3: el "despertador" de la Parte 2. Salesforce lo ejecuta todas las noches a
- *              las 3:00 (después de los jobs del DEV #1 a la 1:00 y del DEV #4 a las 2:00) y
- *              solo lanza RenewalQuoteBatch, sin lógica propia.
+ * @description DEV #3: the "alarm clock" of Part 2. Salesforce runs it every night at
+ *              3:00 (after the DEV #1 job at 1:00 and the DEV #4 job at 2:00) and it
+ *              only launches RenewalQuoteBatch, with no logic of its own.
  *
- *              Para programarlo (una sola vez, por ejemplo desde Execute Anonymous):
+ *              To schedule it (only once, for example from Execute Anonymous):
  *              System.schedule( RenewalQuoteScheduler.JOB_NAME,
  *                               RenewalQuoteScheduler.CRON_EXPRESSION,
  *                               new RenewalQuoteScheduler() );
@@ -12,16 +12,16 @@ public with sharing class RenewalQuoteScheduler implements Schedulable {
 
     public static final String JOB_NAME = 'Renewal Quote Generation - Nightly';
 
-    // Segundo Minuto Hora Día-del-mes Mes Día-de-la-semana: todos los días a las 3:00
+    // Seconds Minutes Hours Day-of-month Month Day-of-week: every day at 3:00
     public static final String CRON_EXPRESSION = '0 0 3 * * ?';
 
-    // Tandas de 1 Contract: CPQ encola un Queueable por cada Renewal Quote y desde un Batch
-    // solo se puede encolar 1 por execute. Además, cada Contract tiene sus propios límites.
+    // Chunks of 1 Contract: CPQ enqueues one Queueable per Renewal Quote, and from a Batch
+    // only 1 can be enqueued per execute. Also, each Contract gets its own limits.
     public static final Integer BATCH_SIZE = 1;
 
     /**
-     * @description Lo llama Salesforce a la hora programada. Solo lanza el Batch.
-     * @param sc Contexto del job programado (lo pasa Salesforce)
+     * @description Called by Salesforce at the scheduled time. It only launches the Batch.
+     * @param sc Scheduled job context (passed by Salesforce)
      */
     public void execute( SchedulableContext sc ) {
         Database.executeBatch( new RenewalQuoteBatch(), BATCH_SIZE );

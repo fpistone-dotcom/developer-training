@@ -1,58 +1,60 @@
 /**
- * @description Lógica del ContractTrigger. Resuelve la Parte 1 del DEV #3: cuando un Contract
- *              se activa, se genera su Renewal Opportunity.
+ * @description Logic for ContractTrigger. Solves Part 1 of DEV #3: when a Contract is
+ *              activated, its Renewal Opportunity is generated.
  *
- *              No creamos la Opportunity a mano: tildamos el campo nativo de CPQ
- *              SBQQ__RenewalForecast__c y el trigger de CPQ (SBQQ.ContractAfter) la arma con
- *              sus productos y cantidades (incluidos los Amendments). Verificado en el org
- *              (Contract 00000107): la Opportunity se crea en el MISMO save, en Prospecting.
+ *              We do not create the Opportunity manually: we check CPQ's native field
+ *              SBQQ__RenewalForecast__c and CPQ's trigger (SBQQ.ContractAfter) builds it with
+ *              its products and quantities (Amendments included). Verified in the org
+ *              (Contract 00000107): the Opportunity is created in the SAME save, in Prospecting.
  *
- *              Todo corre en before: modificamos un campo del mismo registro, así que alcanza
- *              con asignarlo en memoria (sin DML, sin SOQL y sin recursión).
+ *              Everything runs in before: we change a field on the same record, so setting it
+ *              in memory is enough (no DML, no SOQL and no recursion).
  *
- * Requirement DEV #3 (textual, primera parte): "As a Sales User, I would like a Renewal
+ *              STATUS_ACTIVATED is public so RenewalQuoteBatch can reuse it (DRY).
+ *
+ * Requirement DEV #3 (verbatim, first part): "As a Sales User, I would like a Renewal
  * Opportunity to automatically be generated when a Contract is activated so that I can
  * accurately forecast future sales."
- * Partes del requirement y dónde se cubren:
- *   (A) "when a Contract is activated"           -> setRenewalForecastOnActivation (Status CAMBIA a Activated)
- *   (B) "a Renewal Opportunity ... generated"    -> SBQQ__RenewalForecast__c = true (lo genera CPQ)
+ * Requirement parts and where they are covered:
+ *   (A) "when a Contract is activated"           -> setRenewalForecastOnActivation (Status CHANGES to Activated)
+ *   (B) "a Renewal Opportunity ... generated"    -> SBQQ__RenewalForecast__c = true (CPQ generates it)
  */
 public with sharing class ContractTriggerHandler {
 
     public static final String STATUS_ACTIVATED = 'Activated';
 
     // ---------------------------------------------------------------------------------
-    // Métodos de entrada: uno por contexto de trigger. Solo llaman a la lógica.
+    // Entry methods: one per trigger context. They only call the logic.
     // ---------------------------------------------------------------------------------
 
     /**
-     * @description Entrada del before update. Req (A): el Status pasa a Activated.
-     * @param newContractList    Trigger.new (los registros con los valores nuevos)
-     * @param oldContractByIdMap Trigger.oldMap (los registros con los valores de antes)
+     * @description Before update entry point. Req (A): the Status changes to Activated.
+     * @param newContractList    Trigger.new (the records with the new values)
+     * @param oldContractByIdMap Trigger.oldMap (the records with the previous values)
      */
     public static void beforeUpdate( List<Contract> newContractList, Map<Id, Contract> oldContractByIdMap ) {
         setRenewalForecastOnActivation( newContractList, oldContractByIdMap );
     }
 
     // ---------------------------------------------------------------------------------
-    // Lógica (private static)
+    // Logic (private static)
     // ---------------------------------------------------------------------------------
 
     /**
-     * @description Req (A) y (B). Tilda SBQQ__RenewalForecast__c en los Contracts cuyo Status
-     *              CAMBIÓ a Activated en esta transacción y que todavía no lo tienen tildado.
-     *              Si el Contract ya estaba activado y se edita otro campo (por ejemplo, el
-     *              recuento del DEV #4 o el Batch del DEV #3), no hace nada.
+     * @description Req (A) and (B). Checks SBQQ__RenewalForecast__c on the Contracts whose Status
+     *              CHANGED to Activated in this transaction and that do not have it checked yet.
+     *              If the Contract was already activated and another field is edited (for example,
+     *              the DEV #4 recount or the DEV #3 Batch), it does nothing.
      * @param newContractList    Trigger.new
      * @param oldContractByIdMap Trigger.oldMap
      */
     private static void setRenewalForecastOnActivation( List<Contract> newContractList, Map<Id, Contract> oldContractByIdMap ) {
         for ( Contract newContract : newContractList ) {
             Contract oldContract = oldContractByIdMap.get( newContract.Id );
-            // "Se activa" significa que el valor CAMBIÓ a Activated en esta transacción
+            // "Is activated" means the value CHANGED to Activated in this transaction
             Boolean statusChanged = newContract.Status != oldContract.Status;
             if ( statusChanged && newContract.Status == STATUS_ACTIVATED && !newContract.SBQQ__RenewalForecast__c ) {
-                // Estamos en before: se asigna en memoria y Salesforce lo guarda en este mismo save
+                // We are in before: it is set in memory and Salesforce saves it in this same save
                 newContract.SBQQ__RenewalForecast__c = true;
             }
         }

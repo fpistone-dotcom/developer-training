@@ -1,46 +1,46 @@
 /**
- * @description Lógica central del DEV #4: recuenta las Subscriptions activas de un grupo de
- *              Contracts y guarda el número en Contract.Active_Subscriptions__c.
+ * @description Core logic of DEV #4: recounts the active Subscriptions of a group of
+ *              Contracts and saves the number in Contract.Active_Subscriptions__c.
  *
- *              La usan los dos caminos (DRY: la regla de "activa" vive en un solo lugar):
- *              - SubscriptionTriggerHandler: cuando se crea, edita, borra o recupera una Subscription.
- *              - ActiveSubscriptionRecountBatch: todas las noches, porque una Subscription puede
- *                empezar o vencer con el paso del tiempo, sin que nadie la edite.
+ *              Both paths use it (DRY: the "active" rule lives in a single place):
+ *              - SubscriptionTriggerHandler: when a Subscription is created, edited, deleted or restored.
+ *              - ActiveSubscriptionRecountBatch: every night, because a Subscription can
+ *                start or end as time passes, without anyone editing it.
  *
- *              No suma ni resta 1: siempre RECUENTA desde cero con los datos actuales. Así el
- *              número no se desfasa si un update falla o si se cargan datos por fuera.
+ *              It does not add or subtract 1: it always RECOUNTS from scratch with the current data.
+ *              That way the number does not drift if an update fails or data is loaded externally.
  *
- *              Definición de "activa" (supuesto confirmado, ver DEV4.md):
- *              - Ya empezó: SBQQ__StartDate__c vacío o <= hoy.
- *              - No venció: SBQQ__EndDate__c vacío (evergreen) o >= hoy.
- *              - No fue terminada: SBQQ__TerminatedDate__c vacío o > hoy.
- *              - El estado del Contract (Draft / Activated) NO se mira: activar el Contract es parte del DEV #3.
+ *              Definition of "active" (confirmed assumption, see DEV4.md):
+ *              - Already started: SBQQ__StartDate__c blank or <= today.
+ *              - Not ended: SBQQ__EndDate__c blank (evergreen) or >= today.
+ *              - Not terminated: SBQQ__TerminatedDate__c blank or > today.
+ *              - The Contract status (Draft / Activated) is NOT checked: activating the Contract is part of DEV #3.
  *
- *              Amendments (verificado en el org con el Contract 00000108): CPQ no modifica la
- *              Subscription original, crea una nueva por la diferencia (+100 o -10) con
- *              SBQQ__RevisedSubscription__c apuntando a la ORIGINAL. Por eso se cuenta una vez cada
- *              Subscription original cuya cantidad neta vigente (original + revisiones que ya
- *              empezaron) sea mayor a 0.
+ *              Amendments (verified in the org with Contract 00000108): CPQ does not modify the
+ *              original Subscription, it creates a new one for the difference (+100 or -10) with
+ *              SBQQ__RevisedSubscription__c pointing to the ORIGINAL. That is why each original
+ *              Subscription is counted once if its net quantity in force (original + revisions
+ *              that have already started) is greater than 0.
  *
- * Requirement DEV #4 (textual): "As a Sales User, I need a field on the Contract that quickly
+ * Requirement DEV #4 (verbatim): "As a Sales User, I need a field on the Contract that quickly
  * identifies how many active Subscriptions are currently related to the Contract."
- * Partes del requirement y dónde se cubren:
- *   (A) "a field on the Contract"                 -> Active_Subscriptions__c (se escribe en recountActiveSubscriptions)
- *   (B) "how many Subscriptions ... related"      -> countActiveSubscriptions (una por Subscription original)
- *   (C) "active ... currently"                    -> isInForceToday + el Batch nocturno
+ * Requirement parts and where they are covered:
+ *   (A) "a field on the Contract"                 -> Active_Subscriptions__c (written in recountActiveSubscriptions)
+ *   (B) "how many Subscriptions ... related"      -> countActiveSubscriptions (one per original Subscription)
+ *   (C) "active ... currently"                    -> isInForceToday + the nightly Batch
  */
 public with sharing class ActiveSubscriptionCounter {
 
     private static final String CLASS_NAME = 'ActiveSubscriptionCounter';
 
     /**
-     * @description Req (A), (B) y (C). Recuenta las Subscriptions activas de estos Contracts y
-     *              actualiza solo los que cambiaron. 1 SOQL (Contracts con sus Subscriptions en
-     *              una subquery) y como máximo 1 DML, sin importar cuántos Contracts lleguen.
-     * @param contractIdSet Contracts a recalcular
+     * @description Req (A), (B) and (C). Recounts the active Subscriptions of these Contracts and
+     *              updates only the ones that changed. 1 SOQL (Contracts with their Subscriptions in
+     *              a subquery) and at most 1 DML, no matter how many Contracts come in.
+     * @param contractIdSet Contracts to recalculate
      */
     public static void recountActiveSubscriptions( Set<Id> contractIdSet ) {
-        // Condicional antes de la SOQL: si no hay Contracts, no gastamos una query
+        // Condition before the SOQL: if there are no Contracts, we do not spend a query
         if ( contractIdSet.isEmpty() ) {
             return;
         }
@@ -48,8 +48,8 @@ public with sharing class ActiveSubscriptionCounter {
         Date today = Date.today();
         List<Contract> contractToUpdateList = new List<Contract>();
 
-        // Las fechas se leen de las fórmulas SBQQ__StartDate__c / SBQQ__EndDate__c: CPQ ya resuelve
-        // ahí "la fecha propia de la Subscription o, si está vacía, la del Contract".
+        // The dates are read from the SBQQ__StartDate__c / SBQQ__EndDate__c formulas: CPQ already
+        // resolves there "the Subscription's own date or, if blank, the Contract's date".
         for ( Contract con : [
             SELECT Id, Active_Subscriptions__c,
                 ( SELECT Id, SBQQ__RevisedSubscription__c, SBQQ__Quantity__c,
@@ -58,16 +58,16 @@ public with sharing class ActiveSubscriptionCounter {
             FROM Contract
             WHERE Id IN :contractIdSet
         ] ) {
-            // Cantidad neta vigente por Subscription original (clave = Id de la original)
+            // Net quantity in force per original Subscription (key = Id of the original)
             Map<Id, Decimal> netQuantityByOriginalIdMap = new Map<Id, Decimal>();
 
-            // Se recorre la subquery con un for (y no pasándola entera a otro método) porque así
-            // Salesforce la trae por partes y no falla si un Contract tiene más de 200 Subscriptions
+            // The subquery is iterated with a for (and not passed whole to another method) because
+            // this way Salesforce fetches it in parts and it does not fail if a Contract has more than 200 Subscriptions
             for ( SBQQ__Subscription__c sub : con.SBQQ__Subscriptions__r ) {
                 if ( !isInForceToday( sub, today ) ) {
                     continue;
                 }
-                // Una revisión de Amendment suma su cantidad (+100 o -10) a la de su original
+                // An Amendment revision adds its quantity (+100 or -10) to its original's quantity
                 Id originalId = sub.Id;
                 if ( sub.SBQQ__RevisedSubscription__c != null ) {
                     originalId = sub.SBQQ__RevisedSubscription__c;
@@ -85,8 +85,8 @@ public with sharing class ActiveSubscriptionCounter {
 
             Integer activeCount = countActiveSubscriptions( netQuantityByOriginalIdMap );
 
-            // Solo se actualiza si el número cambió: menos DML y no se disparan de más los
-            // triggers de CPQ sobre Contract
+            // Only update if the number changed: less DML and CPQ's Contract triggers
+            // are not fired unnecessarily
             if ( con.Active_Subscriptions__c != activeCount ) {
                 con.Active_Subscriptions__c = activeCount;
                 contractToUpdateList.add( con );
@@ -97,12 +97,12 @@ public with sharing class ActiveSubscriptionCounter {
     }
 
     /**
-     * @description Req (C). Una Subscription está en vigencia HOY si ya empezó, no venció y no
-     *              fue terminada. Las fechas vacías no la excluyen (por ejemplo, un Contract
-     *              evergreen no tiene fecha de fin).
-     * @param sub   Subscription a evaluar (con los campos de fecha consultados)
-     * @param today Fecha de hoy
-     * @return true si está en vigencia hoy
+     * @description Req (C). A Subscription is in force TODAY if it has started, has not ended and
+     *              was not terminated. Blank dates do not exclude it (for example, an evergreen
+     *              Contract has no end date).
+     * @param sub   Subscription to evaluate (with the date fields queried)
+     * @param today Today's date
+     * @return true if it is in force today
      */
     private static Boolean isInForceToday( SBQQ__Subscription__c sub, Date today ) {
         Boolean hasStarted = sub.SBQQ__StartDate__c == null || sub.SBQQ__StartDate__c <= today;
@@ -116,11 +116,11 @@ public with sharing class ActiveSubscriptionCounter {
     }
 
     /**
-     * @description Req (B). Cuenta las Subscriptions originales que siguen teniendo cantidad
-     *              neta positiva. Ejemplo: 125 + 100 - 10 = 215 -> cuenta 1. Si un Amendment la
-     *              baja a 0 (125 - 125), deja de contar.
-     * @param netQuantityByOriginalIdMap Cantidad neta vigente por Subscription original
-     * @return Cantidad de Subscriptions activas
+     * @description Req (B). Counts the original Subscriptions that still have a positive net
+     *              quantity. Example: 125 + 100 - 10 = 215 -> counts 1. If an Amendment brings it
+     *              down to 0 (125 - 125), it stops counting.
+     * @param netQuantityByOriginalIdMap Net quantity in force per original Subscription
+     * @return Number of active Subscriptions
      */
     private static Integer countActiveSubscriptions( Map<Id, Decimal> netQuantityByOriginalIdMap ) {
         Integer activeCount = 0;
@@ -133,10 +133,10 @@ public with sharing class ActiveSubscriptionCounter {
     }
 
     /**
-     * @description Guarda los Contracts con un solo update. Con allOrNone = false, si uno falla
-     *              los demás se guardan igual y el error queda en Error_Log__c, sin cancelar la
-     *              transacción que nos llamó (por ejemplo, el contracting de CPQ).
-     * @param contractToUpdateList Contracts con el número nuevo
+     * @description Saves the Contracts with a single update. With allOrNone = false, if one fails
+     *              the others are still saved and the error is stored in Error_Log__c, without
+     *              cancelling the transaction that called us (for example, CPQ's contracting).
+     * @param contractToUpdateList Contracts with the new number
      */
     private static void updateContracts( List<Contract> contractToUpdateList ) {
         if ( contractToUpdateList.isEmpty() ) {
@@ -144,7 +144,7 @@ public with sharing class ActiveSubscriptionCounter {
         }
         List<Database.SaveResult> resultList = Database.update( contractToUpdateList, false );
 
-        // Los resultados vuelven en el mismo orden que la lista: se recorren por posición
+        // The results come back in the same order as the list: they are read by position
         List<Error_Log__c> errorLogList = new List<Error_Log__c>();
         for ( Integer i = 0; i < resultList.size(); i++ ) {
             if ( !resultList[i].isSuccess() ) {

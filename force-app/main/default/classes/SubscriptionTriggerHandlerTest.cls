@@ -1,7 +1,7 @@
 /**
- * @description Tests del DEV #4: SubscriptionTrigger + SubscriptionTriggerHandler.
- *              Prueban los 4 contextos (insert, update, delete, undelete), el cambio de Contract
- *              y el caso bulk. La regla de "activa" se prueba en ActiveSubscriptionCounterTest.
+ * @description Tests for DEV #4: SubscriptionTrigger + SubscriptionTriggerHandler.
+ *              They test the 4 contexts (insert, update, delete, undelete), the Contract change
+ *              and the bulk case. The "active" rule is tested in ActiveSubscriptionCounterTest.
  */
 @IsTest
 private class SubscriptionTriggerHandlerTest {
@@ -9,7 +9,7 @@ private class SubscriptionTriggerHandlerTest {
     private static final Integer BULK_SIZE = 200;
 
     /**
-     * @description Datos comunes: una Account, un producto y dos Contracts vigentes (A y B).
+     * @description Common data: an Account, a product and two Contracts in force (A and B).
      */
     @testSetup
     static void setup() {
@@ -20,7 +20,7 @@ private class SubscriptionTriggerHandlerTest {
     }
 
     /**
-     * @description after insert: 2 Subscriptions en A y 1 en B, en el mismo insert -> A = 2, B = 1.
+     * @description after insert: 2 Subscriptions on A and 1 on B, in the same insert -> A = 2, B = 1.
      */
     @isTest
     static void insertTest() {
@@ -31,12 +31,12 @@ private class SubscriptionTriggerHandlerTest {
         insert subList;
         Test.stopTest();
 
-        System.assertEquals( 2, getActiveCount( getContractAId() ), 'El Contract A debería tener 2 activas' );
-        System.assertEquals( 1, getActiveCount( getContractBId() ), 'El Contract B debería tener 1 activa' );
+        System.assertEquals( 2, getActiveCount( getContractAId() ), 'Contract A should have 2 active' );
+        System.assertEquals( 1, getActiveCount( getContractBId() ), 'Contract B should have 1 active' );
     }
 
     /**
-     * @description after update (cambio relevante): se termina la Subscription hoy -> pasa de 1 a 0.
+     * @description after update (relevant change): the Subscription is terminated today -> goes from 1 to 0.
      */
     @isTest
     static void updateRelevantFieldTest() {
@@ -48,13 +48,13 @@ private class SubscriptionTriggerHandlerTest {
         Test.stopTest();
 
         System.assertEquals( 0, getActiveCount( getContractAId() ),
-            'Al terminarla hoy, la Subscription debería dejar de contar' );
+            'When terminated today, the Subscription should stop counting' );
     }
 
     /**
-     * @description Negativo, after update sin cambio relevante: cambia solo el precio -> no se
-     *              recalcula. Para comprobarlo, antes se pone a mano un número "incorrecto" (99)
-     *              en el Contract: si el trigger recalculara, lo corregiría a 1.
+     * @description Negative, after update with no relevant change: only the price changes -> it is not
+     *              recalculated. To prove it, a "wrong" number (99) is first set manually
+     *              on the Contract: if the trigger recalculated, it would fix it to 1.
      */
     @isTest
     static void updateIrrelevantFieldTest() {
@@ -67,12 +67,12 @@ private class SubscriptionTriggerHandlerTest {
         Test.stopTest();
 
         System.assertEquals( 99, getActiveCount( getContractAId() ),
-            'Un cambio de precio no afecta el conteo, así que no debería recalcularse' );
+            'A price change does not affect the count, so it should not be recalculated' );
     }
 
     /**
-     * @description after update, caso especial: la Subscription se mueve de A a B -> se
-     *              recalculan los dos: A pierde una (0) y B gana una (1).
+     * @description after update, special case: the Subscription moves from A to B -> both
+     *              are recalculated: A loses one (0) and B gains one (1).
      */
     @isTest
     static void moveToAnotherContractTest() {
@@ -83,12 +83,12 @@ private class SubscriptionTriggerHandlerTest {
         update subList;
         Test.stopTest();
 
-        System.assertEquals( 0, getActiveCount( getContractAId() ), 'El Contract viejo (A) debería quedar en 0' );
-        System.assertEquals( 1, getActiveCount( getContractBId() ), 'El Contract nuevo (B) debería quedar en 1' );
+        System.assertEquals( 0, getActiveCount( getContractAId() ), 'The old Contract (A) should end up at 0' );
+        System.assertEquals( 1, getActiveCount( getContractBId() ), 'The new Contract (B) should end up at 1' );
     }
 
     /**
-     * @description after delete: se borra una de dos Subscriptions -> pasa de 2 a 1.
+     * @description after delete: one of two Subscriptions is deleted -> goes from 2 to 1.
      */
     @isTest
     static void deleteTest() {
@@ -99,11 +99,11 @@ private class SubscriptionTriggerHandlerTest {
         Test.stopTest();
 
         System.assertEquals( 1, getActiveCount( getContractAId() ),
-            'La Subscription borrada debería dejar de contar' );
+            'The deleted Subscription should stop counting' );
     }
 
     /**
-     * @description after undelete: se borra y se recupera de la papelera -> vuelve a 1.
+     * @description after undelete: it is deleted and restored from the Recycle Bin -> back to 1.
      */
     @isTest
     static void undeleteTest() {
@@ -115,11 +115,11 @@ private class SubscriptionTriggerHandlerTest {
         Test.stopTest();
 
         System.assertEquals( 1, getActiveCount( getContractAId() ),
-            'La Subscription recuperada debería volver a contar' );
+            'The restored Subscription should count again' );
     }
 
     /**
-     * @description Negativo: una Subscription sin Contract no rompe nada ni genera errores.
+     * @description Negative: a Subscription without a Contract does not break anything or create errors.
      */
     @isTest
     static void subscriptionWithoutContractTest() {
@@ -127,13 +127,13 @@ private class SubscriptionTriggerHandlerTest {
         insert TestDataFactory.buildSubscriptions( null, getProductId(), 1, 10 );
         Test.stopTest();
 
-        System.assertEquals( 0, getActiveCount( getContractAId() ), 'Los Contracts no deberían cambiar' );
-        System.assertEquals( 0, [SELECT COUNT() FROM Error_Log__c], 'No debería generarse ningún Error Log' );
+        System.assertEquals( 0, getActiveCount( getContractAId() ), 'The Contracts should not change' );
+        System.assertEquals( 0, [SELECT COUNT() FROM Error_Log__c], 'No Error Log should be created' );
     }
 
     /**
-     * @description Bulk: 200 Subscriptions en un solo insert -> 200, sin pasarse de los límites
-     *              (el recuento hace 1 query y 1 update para todo el lote).
+     * @description Bulk: 200 Subscriptions in a single insert -> 200, without going over the limits
+     *              (the recount does 1 query and 1 update for the whole batch).
      */
     @isTest
     static void bulkInsertTest() {
@@ -144,11 +144,11 @@ private class SubscriptionTriggerHandlerTest {
         Test.stopTest();
 
         System.assertEquals( BULK_SIZE, getActiveCount( getContractAId() ),
-            'Las 200 Subscriptions deberían contar' );
+            'The 200 Subscriptions should count' );
     }
 
     /**
-     * @description Bulk: se borran las 200 en un solo delete -> 0.
+     * @description Bulk: all 200 are deleted in a single delete -> 0.
      */
     @isTest
     static void bulkDeleteTest() {
@@ -159,7 +159,7 @@ private class SubscriptionTriggerHandlerTest {
         Test.stopTest();
 
         System.assertEquals( 0, getActiveCount( getContractAId() ),
-            'Al borrar las 200 el Contract debería quedar en 0' );
+            'After deleting the 200 the Contract should end up at 0' );
     }
 
     // ---------------------------------------------------------------------------------
@@ -176,7 +176,7 @@ private class SubscriptionTriggerHandlerTest {
         return [SELECT Id FROM Product2 LIMIT 1].Id;
     }
 
-    // A = plazo de 12 meses, B = plazo de 24 meses (así se distinguen)
+    // A = 12-month term, B = 24-month term (that is how they are told apart)
     private static Id getContractAId() {
         return [SELECT Id FROM Contract WHERE ContractTerm = 12 LIMIT 1].Id;
     }

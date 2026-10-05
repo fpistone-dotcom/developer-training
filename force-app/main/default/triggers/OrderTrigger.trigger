@@ -1,10 +1,10 @@
 /**
- * @description Único trigger de Order. No tiene lógica: solo mira en qué momento
- *              se ejecuta y llama al método que corresponde del OrderTriggerHandler.
+ * @description Single trigger for Order. It has no logic: it only checks which context
+ *              it is running in and calls the matching method of OrderTriggerHandler.
  *
  * Requirement DEV #2:
- *   - before update -> cubre "cuando el Price Calculation Status se actualiza"
- *   - after insert  -> cubre "cuando la Order se crea"
+ *   - before update -> covers "the Price Calculation Status on the Order is updated"
+ *   - after insert  -> covers "whenever it is created"
  */
 trigger OrderTrigger on Order ( before update, after insert ) {
     if ( Trigger.isBefore && Trigger.isUpdate ) {

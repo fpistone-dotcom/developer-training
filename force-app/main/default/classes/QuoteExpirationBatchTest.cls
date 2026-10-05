@@ -1,11 +1,11 @@
 /**
- * @description Tests del DEV #1 (Parte B): QuoteExpirationBatch.
- *              Las aprobaciones pendientes son REALES: se hace Submit con Approval.process y
- *              el Approval Process del org (Quote_Approval_V2) corre también en el test.
- *              Con Payment Terms = Net 60 la Quote queda pendiente de Finance (In Review).
+ * @description Tests for DEV #1 (Part B): QuoteExpirationBatch.
+ *              The pending approvals are REAL: they are submitted with Approval.process and
+ *              the org's Approval Process (Quote_Approval_V2) also runs in the test.
+ *              With Payment Terms = Net 60 the Quote is left pending on Finance (In Review).
  *
- *              En un test, el Batch corre completo en Test.stopTest() y su execute() se
- *              ejecuta una sola vez (por eso el bulk usa 200 Quotes, el tamaño de una tanda).
+ *              In a test, the whole Batch runs in Test.stopTest() and its execute() runs
+ *              only once (that is why the bulk test uses 200 Quotes, the size of one chunk).
  */
 @IsTest
 private class QuoteExpirationBatchTest {
@@ -15,7 +15,7 @@ private class QuoteExpirationBatchTest {
     private static final Date YESTERDAY = Date.today().addDays( -1 );
 
     /**
-     * @description Datos comunes: una Account, una Opportunity abierta y una ganada.
+     * @description Common data: an Account, an open Opportunity and a won one.
      */
     @testSetup
     static void setup() {
@@ -25,12 +25,12 @@ private class QuoteExpirationBatchTest {
     }
 
     // ---------------------------------------------------------------------------------
-    // Positivos: se hace recall
+    // Positive cases: the recall happens
     // ---------------------------------------------------------------------------------
 
     /**
-     * @description Positivo: Quote pendiente, vencida ayer, con la Opportunity abierta
-     *              -> recall: vuelve a Draft y ya no tiene aprobación pendiente.
+     * @description Positive: pending Quote, expired yesterday, with the Opportunity open
+     *              -> recall: it goes back to Draft and no longer has a pending approval.
      */
     @isTest
     static void recallExpiredQuoteTest() {
@@ -41,15 +41,15 @@ private class QuoteExpirationBatchTest {
         Test.stopTest();
 
         System.assertEquals( 'Draft', getStatus( quoteList[0].Id ),
-            'La Quote vencida con la Opportunity abierta debería volver a Draft (Recall Action)' );
+            'The expired Quote with the Opportunity open should go back to Draft (Recall Action)' );
         System.assertEquals( 0, countPendingApprovals( quoteList ),
-            'La Quote no debería tener aprobaciones pendientes después del recall' );
+            'The Quote should not have pending approvals after the recall' );
         System.assertEquals( 0, [SELECT COUNT() FROM Error_Log__c],
-            'Un recall exitoso no debería generar Error Logs' );
+            'A successful recall should not create Error Logs' );
     }
 
     /**
-     * @description Borde: la Quote vence HOY. "Reaches the Expiration Date" = el mismo día
+     * @description Edge case: the Quote expires TODAY. "Reaches the Expiration Date" = the same day
      *              (SBQQ__ExpirationDate__c <= TODAY) -> recall.
      */
     @isTest
@@ -61,11 +61,11 @@ private class QuoteExpirationBatchTest {
         Test.stopTest();
 
         System.assertEquals( 'Draft', getStatus( quoteList[0].Id ),
-            'Una Quote que vence hoy ya alcanzó su vencimiento y debería recallearse' );
+            'A Quote that expires today has reached its expiration and should be recalled' );
     }
 
     /**
-     * @description Bulk: 200 Quotes pendientes y vencidas -> las 200 vuelven a Draft.
+     * @description Bulk: 200 pending and expired Quotes -> all 200 go back to Draft.
      */
     @isTest
     static void recallBulkTest() {
@@ -76,17 +76,17 @@ private class QuoteExpirationBatchTest {
         Test.stopTest();
 
         Integer draftCount = [SELECT COUNT() FROM SBQQ__Quote__c WHERE SBQQ__Status__c = 'Draft'];
-        System.assertEquals( BULK_SIZE, draftCount, 'Las 200 Quotes vencidas deberían volver a Draft' );
+        System.assertEquals( BULK_SIZE, draftCount, 'The 200 expired Quotes should go back to Draft' );
         System.assertEquals( 0, countPendingApprovals( quoteList ),
-            'Ninguna de las 200 Quotes debería quedar con aprobaciones pendientes' );
+            'None of the 200 Quotes should be left with pending approvals' );
     }
 
     // ---------------------------------------------------------------------------------
-    // Negativos: no se toca la Quote
+    // Negative cases: the Quote is not touched
     // ---------------------------------------------------------------------------------
 
     /**
-     * @description Negativo: la Quote vence mañana -> sigue pendiente.
+     * @description Negative: the Quote expires tomorrow -> it stays pending.
      */
     @isTest
     static void notRecalledWhenNotExpiredTest() {
@@ -97,13 +97,13 @@ private class QuoteExpirationBatchTest {
         Test.stopTest();
 
         System.assertEquals( 'In Review', getStatus( quoteList[0].Id ),
-            'Una Quote que todavía no venció no debería recallearse' );
+            'A Quote that has not expired yet should not be recalled' );
         System.assertEquals( 1, countPendingApprovals( quoteList ),
-            'La aprobación de una Quote no vencida debería seguir pendiente' );
+            'The approval of a Quote that has not expired should stay pending' );
     }
 
     /**
-     * @description Negativo: la Opportunity ya está Closed Won -> no se hace recall.
+     * @description Negative: the Opportunity is already Closed Won -> no recall.
      */
     @isTest
     static void notRecalledWhenOpportunityWonTest() {
@@ -114,13 +114,13 @@ private class QuoteExpirationBatchTest {
         Test.stopTest();
 
         System.assertEquals( 'In Review', getStatus( quoteList[0].Id ),
-            'Si la Opportunity ya está Closed Won, la Quote no debería recallearse' );
+            'If the Opportunity is already Closed Won, the Quote should not be recalled' );
     }
 
     /**
-     * @description Negativo (supuesto del mentor): una Quote ya aprobada y vencida no se toca.
-     *              Se inserta aprobada (el trigger le pone hoy + 30) y después se le fuerza un
-     *              vencimiento pasado; como el Status no cambia, el trigger no lo recalcula.
+     * @description Negative (mentor assumption): an already approved and expired Quote is not touched.
+     *              It is inserted approved (the trigger sets today + 30) and then a past expiration
+     *              is forced; since the Status does not change, the trigger does not recalculate it.
      */
     @isTest
     static void notRecalledWhenAlreadyApprovedTest() {
@@ -135,11 +135,11 @@ private class QuoteExpirationBatchTest {
         Test.stopTest();
 
         System.assertEquals( 'Approved', getStatus( quoteList[0].Id ),
-            'Una Quote ya aprobada no debería tocarse, aunque esté vencida' );
+            'An already approved Quote should not be touched, even if it is expired' );
     }
 
     /**
-     * @description Negativo (supuesto documentado): una Quote sin Opportunity queda afuera.
+     * @description Negative (documented assumption): a Quote without an Opportunity is left out.
      */
     @isTest
     static void notRecalledWithoutOpportunityTest() {
@@ -150,13 +150,13 @@ private class QuoteExpirationBatchTest {
         Test.stopTest();
 
         System.assertEquals( 'In Review', getStatus( quoteList[0].Id ),
-            'Una Quote sin Opportunity no debería recallearse' );
+            'A Quote without an Opportunity should not be recalled' );
     }
 
     /**
-     * @description Borde: una Quote con Status "In Review" puesto a mano, sin aprobación
-     *              pendiente. El Batch la encuentra pero no hay nada que recallear: no la toca
-     *              y no genera errores.
+     * @description Edge case: a Quote with Status "In Review" set manually, with no pending
+     *              approval. The Batch finds it but there is nothing to recall: it does not touch it
+     *              and does not create errors.
      */
     @isTest
     static void notRecalledWithoutPendingApprovalTest() {
@@ -169,13 +169,13 @@ private class QuoteExpirationBatchTest {
         Test.stopTest();
 
         System.assertEquals( 'In Review', getStatus( quoteList[0].Id ),
-            'Sin aprobación pendiente no hay recall: la Quote no debería cambiar' );
+            'Without a pending approval there is no recall: the Quote should not change' );
         System.assertEquals( 0, [SELECT COUNT() FROM Error_Log__c],
-            'Una Quote sin aprobación pendiente no debería generar Error Logs' );
+            'A Quote without a pending approval should not create Error Logs' );
     }
 
     // ---------------------------------------------------------------------------------
-    // Métodos de ayuda
+    // Helper methods
     // ---------------------------------------------------------------------------------
 
     private static Id getAccountId() {
@@ -183,8 +183,8 @@ private class QuoteExpirationBatchTest {
     }
 
     /**
-     * @param isWon true para la Opportunity Closed Won, false para la abierta
-     * @return Id de la Opportunity pedida
+     * @param isWon true for the Closed Won Opportunity, false for the open one
+     * @return Id of the requested Opportunity
      */
     private static Id getOpportunityId( Boolean isWon ) {
         return [SELECT Id FROM Opportunity WHERE IsWon = :isWon LIMIT 1].Id;
@@ -199,12 +199,12 @@ private class QuoteExpirationBatchTest {
     }
 
     /**
-     * @description Inserta Quotes y las envía a aprobación de verdad (Submit), así quedan
-     *              In Review con una aprobación pendiente de Finance.
-     * @param opportunityId  Opportunity de las Quotes (null = sin Opportunity)
-     * @param numberOfQuotes Cantidad de Quotes
-     * @param expirationDate Vencimiento de las Quotes
-     * @return Quotes insertadas y enviadas a aprobación
+     * @description Inserts Quotes and really submits them for approval (Submit), so they are
+     *              In Review with an approval pending on Finance.
+     * @param opportunityId  Opportunity of the Quotes (null = no Opportunity)
+     * @param numberOfQuotes Number of Quotes
+     * @param expirationDate Expiration date of the Quotes
+     * @return Quotes inserted and submitted for approval
      */
     private static List<SBQQ__Quote__c> insertPendingQuotes( Id opportunityId, Integer numberOfQuotes, Date expirationDate ) {
         List<SBQQ__Quote__c> quoteList = TestDataFactory.buildQuotes( getAccountId(), numberOfQuotes, 'Draft', expirationDate );

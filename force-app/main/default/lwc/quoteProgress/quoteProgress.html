@@ -1,5 +1,5 @@
 <template>
-    <!-- Card estándar de Salesforce con título, ícono y el botón Refresh -->
+    <!-- Standard Salesforce card with title, icon and the Refresh button -->
     <lightning-card title="Quote Progress" icon-name="standard:task">
         <div slot="actions">
             <template lwc:if={hasSteps}>
@@ -14,17 +14,17 @@
         </div>
 
         <div class="slds-p-horizontal_medium">
-            <!-- Mientras espera la respuesta de Apex -->
+            <!-- While waiting for the Apex response -->
             <template lwc:if={isLoading}>
                 <lightning-spinner alternative-text="Loading" size="small"></lightning-spinner>
             </template>
 
-            <!-- Si Apex devolvió un error (por ejemplo, la Quote no existe) -->
+            <!-- If Apex returned an error (for example, the Quote does not exist) -->
             <template lwc:if={errorMessage}>
                 <p class="slds-text-color_error">{errorMessage}</p>
             </template>
 
-            <!-- Un renglón por paso: check verde o X roja + el texto del paso -->
+            <!-- One row per step: green check or red X + the step text -->
             <ul class="slds-list_vertical-space">
                 <template for:each={steps} for:item="step">
                     <li key={step.label} class="slds-media slds-media_center">

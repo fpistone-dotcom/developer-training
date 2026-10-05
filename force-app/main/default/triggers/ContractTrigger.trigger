@@ -1,12 +1,12 @@
 /**
- * @description Único trigger de Contract. No tiene lógica: solo mira en qué momento se
- *              ejecuta y llama al método que corresponde del ContractTriggerHandler.
+ * @description Single trigger for Contract. It has no logic: it only checks which context it is
+ *              running in and calls the matching method of ContractTriggerHandler.
  *
- * Requirement DEV #3 (Parte 1):
- *   - before update -> el Status pasa a Activated: se tilda SBQQ__RenewalForecast__c en el
- *                      mismo save y CPQ (SBQQ.ContractAfter) genera la Renewal Opportunity.
- *   No hay before insert: Salesforce no deja crear un Contract ya Activated
- *   (FAILED_ACTIVATION, verificado en el org), así que la activación siempre es un update.
+ * Requirement DEV #3 (Part 1):
+ *   - before update -> the Status changes to Activated: SBQQ__RenewalForecast__c is checked in the
+ *                      same save and CPQ (SBQQ.ContractAfter) generates the Renewal Opportunity.
+ *   There is no before insert: Salesforce does not allow creating a Contract that is already
+ *   Activated (FAILED_ACTIVATION, verified in the org), so activation is always an update.
  */
 trigger ContractTrigger on Contract ( before update ) {
     if ( Trigger.isBefore && Trigger.isUpdate ) {
