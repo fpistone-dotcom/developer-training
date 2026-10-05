@@ -1,6 +1,6 @@
 # DEV #3 — Renewal Opportunity y Renewal Quote automáticas · Resumen para el Code Review
 
-> **Estado:** terminado, deployado y probado en el org (05/10/2026). Job nocturno programado a las 3:00. Contract de la demo (00000110) preparado en Draft.
+> **Estado:** terminado, deployado y probado en el org (05/10/2026). Job nocturno programado a las 3:00. Contract de la demo (00000110) preparado en Draft. **Corrección del mismo día:** filtro para no mandar emails de la Renewal Quote temporal de CPQ (ver "Hallazgo" en la sección 2).
 
 ---
 
@@ -52,6 +52,33 @@ En el org también existen `SBQQ.ContractBefore` / `SBQQ.ContractAfter` y `SBQQ.
 | Settings de CPQ | Ningún Contract del org tenía los flags tildados: CPQ **no** los tilda solo |
 | Insertar un Contract ya Activated (con rollback) | **No se puede:** `FAILED_ACTIVATION`. Por eso no hay before insert |
 
+### Hallazgo después de la primera prueba: la Renewal Quote temporal de CPQ
+
+Después del deploy, Francisco recibió **dos** emails: el de Q-00092 (real, el link funciona) y otro de **Q-00090**, cuyo link no funcionaba porque esa Quote estaba en la papelera. No la borró nadie a mano: **la borró CPQ.**
+
+**Qué hace CPQ al tildar *Renewal Forecast* (activación):** crea una **Renewal Quote temporal** (Type Renewal, Primary, Draft, montos en 0, `Uncalculated = true`), encola su `QueueableCalculatorService` para calcular los precios de los productos de la Renewal Opportunity y, **cuando el cálculo termina, la borra**. Evidencia en el org:
+
+| Quote temporal | Nació (activación) | Se borró | Fin del `QueueableCalculatorService` |
+|---|---|---|---|
+| Q-00083 (Paso 0, Contract 00000107) | 14:19:42 | 14:19:50 | 14:19:50 |
+| Q-00090 (E2E, Contract 00000109) | 14:49:55 | 14:49:59 | 14:49:59 |
+| Q-00106 (Fix Test, Contract 00000111) | 15:45:24 | 15:45:29 | — (mismo patrón) |
+
+Además, el debug log mostró que CPQ inserta **otra** Renewal Quote en cada paso y la **deshace en la misma transacción** con un rollback interno (Q-00089, Q-00091, Q-00105, Q-00107: no existen ni en la papelera). Ese rollback también descarta el email que encoló nuestro trigger, por eso nunca llegaron. En el Paso 0 no lo vimos porque solo consultamos Quotes vivas.
+
+**El problema:** en el `after insert` la temporal es **idéntica** a una real (Renewal, Primary, Draft, sin calcular). Por sus campos no se pueden distinguir.
+
+**La solución (opción A, confirmada por Francisco):** mandar el email solo si el Contract que renueva la Quote tiene **`SBQQ__RenewalQuoted__c = true`**, o sea, si alguien **pidió** una Renewal Quote (el Batch o un usuario). La temporal nace en la activación, cuando ese flag está en false. Se lee en la misma query que ya existía, subiendo por los lookups Quote → Opportunity → Contract (`SBQQ__Opportunity2__r.SBQQ__RenewedContract__r.SBQQ__RenewalQuoted__c`): 0 queries extra.
+
+**Supuestos verificados antes de programar** (transacción de prueba sobre el 00000111, deshecha al final con un error a propósito, sin datos ni emails):
+1. La Renewal Opportunity ya tiene `SBQQ__RenewedContract__c` cuando termina la activación. En el flujo real la Quote de verdad nace en una transacción posterior (la del Batch), así que la Opportunity ya lo tiene. ✅
+2. La query ve `SBQQ__RenewalQuoted__c = false` justo después de activar y `true` justo después de tildarlo, **en la misma transacción**. ✅
+
+| Descartada | Por qué |
+|---|---|
+| B. Mandar el email desde el Batch | Dejaría de avisar por las Renewal Quotes generadas a mano (cambiaba la decisión 5) |
+| C. Email diferido con un Queueable que revise si la Quote sigue existiendo | Carrera de tiempos y más piezas. Desde el Batch ya usamos el único cupo de Queueable |
+
 ### Por qué así y qué descartamos
 
 | Decisión | Por qué | Alternativa descartada |
@@ -63,7 +90,7 @@ En el org también existen `SBQQ.ContractBefore` / `SBQQ.ContractAfter` y `SBQQ.
 | **Ventana "30 días o menos" + flag como marca** | Si el job falla una noche, o si un Contract se activa con menos de 30 días por delante, la noche siguiente lo procesa igual. `SBQQ__RenewalQuoted__c = true` evita procesarlo dos veces (idempotente). | `EndDate = hoy + 30` exacto: si esa noche falla, el Contract se pierde para siempre. |
 | **Tandas de 1 Contract** | Confirmado en el org: CPQ encola **un** Queueable por cada Renewal Quote, y desde un `execute` de Batch solo se puede encolar **1**. Además, los tests mostraron que la generación de CPQ con muchos Contracts juntos rompe el límite de queries **dentro de su código**. Son pocos Contracts por noche. | Tandas de 200: "Too many queueable jobs" y "SBQQ: Too many SOQL queries". |
 | **Etapa en el Batch, solo desde Prospecting** | Es el evento exacto del requirement ("30 days before ... updated"). Corre en nuestra transacción, después de que CPQ creó la Quote. Si un vendedor ya movió la Opportunity, no la pisamos. | **En el after insert de la Quote:** correría dentro del insert de CPQ, antes de que existan las líneas, y mezclaría el email con cambios de datos. **"Si no está cerrada":** podría hacer retroceder una Opportunity en Negotiation/Review. |
-| **Email en el after insert del `QuoteTrigger`** | Avisa por cualquier Renewal Quote, la genere el Batch o un usuario. En after porque el link necesita el Id. | **Desde el Batch:** solo cubre ese camino y habría que buscar la Quote. |
+| **Email en el after insert del `QuoteTrigger`** | Avisa por cualquier Renewal Quote **pedida** (Contract con `SBQQ__RenewalQuoted__c = true`), la genere el Batch o un usuario. En after porque el link necesita el Id. El filtro descarta la Quote temporal de CPQ (ver "Hallazgo"). | **Desde el Batch:** solo cubre ese camino y habría que buscar la Quote. |
 | **Email armado en Apex (sin Email Template)** | No suma metadata (IC). Con un User como destinatario, Salesforce no deja usar `whatId`, así que los merge fields de la Quote no funcionan en un template. | Email Template: metadata nueva y merge fields limitados. |
 | **`setTargetObjectId( OwnerId )`** | Los emails a usuarios internos **no cuentan** para el límite diario del org (15 en Developer Edition). | `setToAddresses( email )`: cuenta para el límite diario. |
 | **try/catch alrededor del envío** | El email se manda dentro del save en el que CPQ crea la Quote. Una excepción sin atrapar haría rollback de la Renewal Quote. El error queda en `Error_Log__c`. | Sin try/catch: un problema de email rompería la renovación. |
@@ -118,9 +145,10 @@ SmartBytes le vende a Burlington **125 Monthly Named Users** por 12 meses: del *
 2. **`QuoteTrigger`** (before insert) → `QuoteTriggerHandler.beforeInsert` (DEV #1): nace en Draft → no hace nada.
 3. **`QuoteTrigger`** (after insert) → **`QuoteTriggerHandler.afterInsert( Trigger.new )`** → **`sendRenewalQuoteNotifications`**:
    - a. Junta los Ids de las Quotes con `SBQQ__Type__c = 'Renewal'`. Si no hay ninguna → `return` (0 queries: el caso normal).
-   - b. **1 SOQL**: nombre de la Quote, Owner, nombre del Account y de la Opportunity.
-   - c. Por cada Quote arma un `Messaging.SingleEmailMessage`: `setTargetObjectId( OwnerId )`, `setSaveAsActivity( false )`, asunto y cuerpo de **`buildEmailBody`** (con el link `URL.getOrgDomainUrl() + '/' + Id`).
-   - d. **1** `Messaging.sendEmail( lista, false )` dentro de `try`. Si un email falla, o si todo el envío tira una excepción (`catch`) → `ErrorLogUtil` → `Error_Log__c`.
+   - b. **1 SOQL**: nombre de la Quote, Owner, nombre del Account y de la Opportunity, y el `SBQQ__RenewalQuoted__c` del Contract que renueva (Quote → Opportunity → Contract).
+   - c. **Filtro:** solo siguen las Quotes cuyo Contract tiene `SBQQ__RenewalQuoted__c == true`. La temporal que CPQ crea al activar queda afuera. Si no queda ninguna → `return`.
+   - d. Por cada Quote arma un `Messaging.SingleEmailMessage`: `setTargetObjectId( OwnerId )`, `setSaveAsActivity( false )`, asunto y cuerpo de **`buildEmailBody`** (con el link `URL.getOrgDomainUrl() + '/' + Id`).
+   - e. **1** `Messaging.sendEmail( lista, false )` dentro de `try`. Si un email falla, o si todo el envío tira una excepción (`catch`) → `ErrorLogUtil` → `Error_Log__c`.
 4. **Resultado:** el Owner recibe *"Renewal Quote created: Q-xxxxx"* con el link. La Quote se crea igual aunque el email falle.
 
 ---
@@ -242,7 +270,23 @@ if ( renewalQuoteIdSet.isEmpty() ) { return; }
 ```
 - **Por qué así:** la mayoría de las Quotes no son Renewal: con este `return` no gastan ninguna query (**Governor Limits**).
 
-**Bloque 2: query de nombres** (Account y Opportunity no vienen en `Trigger.new`): relaciones lookup para datos del padre (**Módulo 1 SOQL**). Una sola query para todas.
+**Bloque 2: query + filtro de la Quote temporal**
+```apex
+List<SBQQ__Quote__c> quoteList = [
+    SELECT Id, Name, OwnerId, SBQQ__Account__r.Name, SBQQ__Opportunity2__r.Name,
+        SBQQ__Opportunity2__r.SBQQ__RenewedContract__r.SBQQ__RenewalQuoted__c
+    FROM SBQQ__Quote__c
+    WHERE Id IN :renewalQuoteIdSet
+];
+for ( SBQQ__Quote__c quote : quoteList ) {
+    if ( quote.SBQQ__Opportunity2__r.SBQQ__RenewedContract__r.SBQQ__RenewalQuoted__c == true ) {
+        renewalQuoteList.add( quote );
+    }
+}
+if ( renewalQuoteList.isEmpty() ) { return; }
+```
+- **Qué hace:** trae los nombres para el email y el flag del Contract que renueva, y se queda solo con las Quotes **pedidas**.
+- **Por qué así:** relaciones lookup para datos de los padres, incluso subiendo dos niveles (**Módulo 1 SOQL**). Una sola query para todas. Se compara con `== true` porque si la Opportunity no tiene Contract el valor llega `null`, y `null` también tiene que contar como "no mandar".
 
 **Bloque 3: armado de los emails**
 ```apex
@@ -293,6 +337,7 @@ Confirmadas por Francisco (02/10/2026 y 05/10/2026):
 9. **Paso 0** autorizado sobre el Contract 00000107 (no el 00000108).
 10. **`SBQQ.TriggerControl.disable()`** solo si hacía falta y solo en tests: hizo falta en los 2 tests bulk.
 11. **Contract "DEV3 Demo"** armado después del deploy y la prueba.
+12. **Filtro de la Quote temporal de CPQ (opción A, 05/10/2026):** el email solo sale si el Contract que renueva la Quote tiene `SBQQ__RenewalQuoted__c = true`. Supuestos verificados en el org antes de programar. Probado con el Contract "DEV3 Fix Test" (00000111).
 
 **Otros supuestos:**
 - **Owner de la Quote:** CPQ le pone el Owner de la Renewal Opportunity, que es el de la Opportunity original (verificado).
@@ -330,6 +375,9 @@ Confirmadas por Francisco (02/10/2026 y 05/10/2026):
 | Nace una Renewal Quote | 1 envío de email, 0 errores | `renewalQuoteSendsEmailTest` |
 | Nacen 200 Renewal Quotes juntas | **1** envío (con 200 emails), no 200 | `renewalQuoteBulkEmailTest` |
 | Nace una Quote que no es Renewal | No hay email | `nonRenewalQuoteNoEmailTest` |
+| Nace una Renewal Quote cuyo Contract no tiene Renewal Quoted (la **temporal** que CPQ crea al activar) | No hay email | `renewalQuoteNotRequestedNoEmailTest` + prueba en el org (00000111: activación con 0 emails encolados) |
+| CPQ inserta y deshace una Renewal Quote en la misma transacción | Su rollback descarta el email encolado | Observado en el org (Q-00089, Q-00091, Q-00105, Q-00107) |
+| Se tildan los dos flags en el mismo save (red de seguridad del Batch) | **Caso gris:** si CPQ crea su temporal en ese save, el flag ya está en true y su email saldría. Ver sección 10 | Sin test (depende de CPQ) |
 | Falla un email (por ejemplo, Owner inactivo) o el envío entero (Deliverability apagado) | Error Log; la Quote se crea igual | Sin test (en test no se puede hacer fallar `sendEmail`) |
 | Activar cientos de Contracts juntos (Data Loader) | Falla **por CPQ** (límite de queries dentro de su código) | `activationBulkTest` sin `TriggerControl` lo mostró. Ver sección 10 |
 
@@ -373,7 +421,10 @@ Solo en los 2 tests bulk. Sin eso fallaban con `SBQQ: Too many SOQL queries`: el
 **12. ¿Cómo se reflejan los Amendments en la renovación?**
 CPQ arma la Renewal Opportunity y la Quote desde todas las Subscriptions del Contract, combinando las revisiones con su original. En el org: 125 + 100 − 10 → **una línea de 215** en la Opportunity (25.800) y en la Quote Q-00092.
 
-**13. ¿Qué cambia en la Renewal Opportunity a los 30 días?**
+**13. ¿Por qué el email mira el flag del Contract y no solo el Type de la Quote?**
+Porque al activar un Contract, CPQ crea una Renewal Quote temporal para calcular la Renewal Opportunity y la borra segundos después. Es idéntica a una real, y en la primera prueba mandamos un email con un link muerto. Solo avisamos si el Contract tiene `RenewalQuoted = true`, o sea, si alguien pidió la Quote. Lo verificamos en el org antes de programar.
+
+**14. ¿Qué cambia en la Renewal Opportunity a los 30 días?**
 CPQ le pone la Renewal Quote como Primary y sincroniza productos y Amount. Nosotros además la pasamos de Prospecting a Proposal/Price Quote, solo si sigue en Prospecting, para no pisar lo que haya avanzado un vendedor.
 
 ---
@@ -388,7 +439,9 @@ CPQ le pone la Renewal Quote como Primary y sincroniza productos y Amount. Nosot
 1. Abrir el Contract **00000110**. Mostrar: Status **Draft**, *Renewal Forecast* destildado, *Renewal Opportunity* vacío, related list Subscriptions con los 3 registros (explicar los Amendments).
 2. **Edit → Status = Activated → Save.**
 3. **Tiene que verse** (al instante, no hace falta esperar): *Renewal Forecast* tildado y *Renewal Opportunity* con link.
-4. Abrir la Renewal Opportunity: **Prospecting**, Close Date 31/10/2026, producto Monthly Named Users × **215**, Amount **25.800**. Explicar que 215 = 125 + 100 − 10.
+4. Abrir la Renewal Opportunity: **Prospecting**, Close Date 31/10/2026, producto Monthly Named Users × **215**, Amount **25.800**. Explicar que 215 = 125 + 100 − 10. Si el Amount todavía muestra otro valor, esperar 5 segundos y refrescar: CPQ calcula los precios en un Queueable.
+5. **En este paso NO tiene que llegar ningún email.** Si preguntan por qué: al activar, CPQ crea una Renewal Quote temporal para calcular la Opportunity y la borra a los pocos segundos. Nuestro filtro (`SBQQ__RenewalQuoted__c` del Contract en false) evita avisar por ella. Es el "Hallazgo" de la sección 2.
+6. *(Opcional, para mostrar el hallazgo)* Related list **Quotes** de la Renewal Opportunity: no queda ninguna Quote. La temporal ya se borró (está en la Papelera).
 
 ### B. Parte 2: los 30 días
 1. *Setup → Scheduled Jobs*: mostrar **Renewal Quote Generation - Nightly**, próxima ejecución a las 3:00.
@@ -402,10 +455,18 @@ CPQ le pone la Renewal Quote como Primary y sincroniza productos y Amount. Nosot
 6. Abrir la Quote: Type **Renewal**, Draft, Primary, 01/11/2026 → 31/10/2027, 1 línea de **215**.
 
 ### C. Parte 3: el email
-1. Abrir el inbox del Owner (frandev → fpistone@firstchairservices.com).
-2. **Tiene que verse:** el email *"Renewal Quote created: Q-xxxxx"* con el Account, la Opportunity y el link.
+1. Abrir el inbox del Owner (frandev → fpistone@firstchairservices.com). Tenerlo abierto **antes** de correr el Batch del punto B.2: el email llega a los pocos segundos.
+2. **Tiene que verse UN solo email:** *"Renewal Quote created: Q-xxxxx"* (el mismo número de la Quote del punto B.6), con el Account, la Opportunity y el link. Ningún email de la activación (punto A.5).
 3. Hacer clic en el link: abre la Quote en Lightning.
 4. Tab **Error Logs**: vacía.
+
+### Notas para la demo
+- **Orden recomendado:** A (activar) → esperar 5 s → mostrar la Opportunity con 215 → B (Batch) → C (email). Esperar a que termine el cálculo de CPQ antes de correr el Batch es una precaución (no probamos qué pasa si se pide la Quote en el medio): en todas las pruebas lo hicimos así y salió bien.
+- **Usuario:** hacerla con frandev (admin). Con un usuario Direct Sales todavía no se probó la activación (QA-DEV3-03).
+- **Si algo falla en vivo:** revisar *Setup → Apex Jobs* (`RenewalQuoteBatch`, `QueueableCalculatorService`) y la tab **Error Logs**. Plan B: mostrar la evidencia ya generada, con el Contract **00000109** (Q-00092) o el **00000111** (Q-00108).
+- **Si en Apex Jobs aparece un `QueueableCalculatorService` en Failed** con *"The system can't process API calls currently"*: es un cálculo duplicado de CPQ, no un error nuestro (sección 10, punto 9).
+- **Fecha límite:** el 00000110 sirve hasta el 31/10/2026 (ver el aviso de arriba). Para una demo posterior, armar otro Contract con los scripts y correr los 3 pasos. Cada script dice en su encabezado qué completar.
+- **Frase para explicar el diseño en 20 segundos:** "No creamos los registros a mano: tildamos los flags nativos de CPQ en el momento justo. Al activar, la Renewal Opportunity; a los 30 días, la Renewal Quote. CPQ arma todo con los Amendments incluidos, y nosotros avisamos al Owner solo cuando la Quote fue pedida de verdad."
 
 ### Evidencia real en el org (05/10/2026)
 
@@ -415,7 +476,8 @@ CPQ le pone la Renewal Quote como Primary y sincroniza productos y Amount. Nosot
 | E2E: Contract **00000109** ("DEV3 E2E Test - Renewal", Q-00086 → Order 00000123) | Amendments Q-00087 (+100 desde 01/05/2026 → Order 00000124 → SUB-0000015) y Q-00088 (−10 desde 01/08/2026 → Order 00000125 → SUB-0000016) |
 | Parte 1 en vivo (update solo del Status) | Nuestro trigger tildó el flag → Renewal Opportunity con **215 × 120 = 25.800**, Prospecting, cierre 31/10/2026 |
 | Parte 2 en vivo (Batch a mano, tamaño 1) | Batch Completed 1/1, 0 errores → **Q-00092** (Renewal, Primary, Owner frandev, 01/11/2026 → 31/10/2027, 1 línea de 215) y Opportunity en **Proposal/Price Quote**. CPQ encoló 1 Queueable de cálculo desde el Batch: Completed |
-| Parte 3 en vivo | `sendEmail` sin errores, 0 Error Logs. Recepción a confirmar en el inbox (QA-DEV3-01) |
+| Parte 3 en vivo | `sendEmail` sin errores, 0 Error Logs. Llegaron 2 emails: Q-00092 (link OK) y **Q-00090** (link muerto: la Quote temporal de CPQ). Ver "Hallazgo" en la sección 2 |
+| Fix Test: Contract **00000111** ("DEV3 Fix Test - Renewal", Q-00096 → Order) | Activación: 2 inserts de Renewal Quote y **0 emails encolados** (debug log). La temporal Q-00106 se borró a los 5 s. Batch: Completed 1/1 → **Q-00108** (Renewal, Primary) + Opportunity en Proposal/Price Quote + **1 email**. 0 Error Logs. **Confirmado por Francisco en Gmail:** llegó solo el email de Q-00108 y el link funciona |
 | Job programado | *Renewal Quote Generation - Nightly*, `0 0 3 * * ?`, WAITING (próxima: 06/10/2026 3:00 America/Los_Angeles) |
 | Demo | Contract **00000110** preparado en Draft (Q-00093 → Order 00000126; Q-00094 → Order 00000127 → SUB-0000018; Q-00095 → Order 00000128 → SUB-0000019) |
 | Observación de CPQ | En los Amendments, CPQ encoló 2 o 3 `QueueableCalculatorService` en paralelo para la misma Quote: uno Completed, los duplicados **Failed** con *"The system can't process API calls currently"*. Las Quotes quedaron bien calculadas. No es nuestro código |
@@ -424,7 +486,7 @@ CPQ le pone la Renewal Quote como Primary y sincroniza productos y Amount. Nosot
 
 ## 9. Tests, cobertura y Build Tracker
 
-### C) Tests del DEV #3 (17 nuevos, todos pasan)
+### C) Tests del DEV #3 (18 nuevos, todos pasan)
 
 **`ContractTriggerHandlerTest`** (setup: Account)
 
@@ -455,13 +517,14 @@ CPQ le pone la Renewal Quote como Primary y sincroniza productos y Amount. Nosot
 |---|---|---|---|---|
 | `scheduleNightlyJobTest` | Positivo | Nombre de job de test | `System.schedule` + `stopTest` | Cron `0 0 3 * * ?` y 1 Batch lanzado |
 
-**`QuoteTriggerHandlerTest`** (3 tests nuevos; los 8 del DEV #1 siguen pasando)
+**`QuoteTriggerHandlerTest`** (4 tests nuevos; los 8 del DEV #1 siguen pasando. Las Renewal Quotes se cuelgan de una Renewal Opportunity cuyo Contract tiene Renewal Quoted en true o en false, armados antes de `Test.startTest()`)
 
 | Test | Tipo | Prepara | Hace | Verifica (assert) |
 |---|---|---|---|---|
-| `renewalQuoteSendsEmailTest` | Positivo | — | Inserta 1 Quote Renewal | 1 envío, 0 Error Logs |
-| `renewalQuoteBulkEmailTest` | Bulk | — | Inserta 200 Quotes Renewal | **1** envío, 0 Error Logs |
+| `renewalQuoteSendsEmailTest` | Positivo | Contract con Renewal Quoted = true | Inserta 1 Quote Renewal | 1 envío, 0 Error Logs |
+| `renewalQuoteBulkEmailTest` | Bulk | Contract con Renewal Quoted = true | Inserta 200 Quotes Renewal | **1** envío, 0 Error Logs |
 | `nonRenewalQuoteNoEmailTest` | Negativo | — | Inserta 1 Quote común | 0 envíos |
+| `renewalQuoteNotRequestedNoEmailTest` | Negativo | Contract con Renewal Quoted = **false** (la temporal de CPQ) | Inserta 1 Quote Renewal | 0 envíos, 0 Error Logs |
 
 **Notas de testing:**
 - `Limits.getEmailInvocations()` se lee **antes** de `Test.stopTest()`. En test los emails no salen, pero Salesforce cuenta las llamadas.
@@ -470,7 +533,7 @@ CPQ le pone la Renewal Quote como Primary y sincroniza productos y Amount. Nosot
 
 ### Cobertura (corrida del 05/10/2026, todos los tests locales)
 
-**70 métodos de test, 70 pasan.** Salesforce informa "78" porque cuenta el `@testSetup` de cada una de las 8 clases que lo tienen. **Cobertura del org: 96%.**
+**71 métodos de test, 71 pasan** (corrida de las 15:46 UTC, después del filtro). Salesforce informa "79" porque cuenta el `@testSetup` de cada una de las 8 clases que lo tienen. **Cobertura del org: 96%.**
 
 | Clase / Trigger | Líneas cubiertas | Cobertura | Sin cubrir y por qué |
 |---|---|---|---|
@@ -479,7 +542,7 @@ CPQ le pone la Renewal Quote como Primary y sincroniza productos y Amount. Nosot
 | `RenewalQuoteBatch` | 40/44 | 91% | **122:** `return` cuando **todos** los updates de Contract fallan. **138:** `return` de seguridad cuando no hay ninguna Opportunity en Prospecting (en los tests CPQ siempre crea una al activar). **155-156:** arman el Error Log cuando falla un update. Con datos normales de test no se puede hacer fallar el update (mismo caso que el DEV #1 y el DEV #4). |
 | `RenewalQuoteScheduler` | 3/3 | 100% | — |
 | `QuoteTrigger` | 6/6 | 100% | — |
-| `QuoteTriggerHandler` | 58/64 | 91% | **186-187:** Error Log cuando falla un email individual. **190-194:** el `catch` (por ejemplo, Deliverability apagado). En un test no se puede hacer fallar `Messaging.sendEmail`. |
+| `QuoteTriggerHandler` | 64/70 | 91% | **205-206:** Error Log cuando falla un email individual. **209-213:** el `catch` (por ejemplo, Deliverability apagado). En un test no se puede hacer fallar `Messaging.sendEmail`. |
 
 ### Build Tracker
 
@@ -496,7 +559,7 @@ CPQ le pone la Renewal Quote como Primary y sincroniza productos y Amount. Nosot
 
 ## 10. Limitaciones conocidas y pendientes de QA
 
-1. **Ramas de error sin cubrir** (`RenewalQuoteBatch` 122, 138, 155-156; `QuoteTriggerHandler` 186-187, 190-194). Ver sección 9.
+1. **Ramas de error sin cubrir** (`RenewalQuoteBatch` 122, 138, 155-156; `QuoteTriggerHandler` 205-206, 209-213). Ver sección 9.
 2. **Activación masiva:** activar muchos Contracts en una sola transacción (por ejemplo, 200 con Data Loader) falla con `SBQQ: Too many SOQL queries`, **por el código de CPQ**, no por el nuestro. Recomendación: activar en tandas chicas (Data Loader con batch size bajo).
 3. **Hasta 1 día de demora:** un Contract que se activa con menos de 30 días por delante recibe su Renewal Quote la noche siguiente.
 4. **Contracts vencidos** (EndDate < hoy) no reciben Renewal Quote automática.
@@ -507,9 +570,11 @@ CPQ le pone la Renewal Quote como Primary y sincroniza productos y Amount. Nosot
 9. **Cálculos duplicados de CPQ:** en los Amendments CPQ encola cálculos en paralelo y los duplicados quedan Failed en Apex Jobs (*"The system can't process API calls currently"*). Las Quotes quedan bien calculadas.
 10. **Demo con fecha:** el Contract 00000110 entra en la ventana solo hasta el 31/10/2026.
 11. **Lección de deploy:** se desplegaron solo los archivos nuevos o cambiados.
+12. **Caso gris de los dos flags en el mismo save:** cuando el Batch procesa un Contract que **no** tenía Renewal Forecast (activado antes del trigger, como 00000100 a 00000105), tilda los dos flags en el mismo update. Si en ese save CPQ crea también su Renewal Quote temporal, nuestro filtro ve `RenewalQuoted = true` y su email saldría con un link que después muere. No se probó (dejaría un Contract real con su renovación generada). En el flujo normal no pasa, porque la activación y los 30 días son transacciones separadas. Si ocurre, el Owner recibe un email extra; la Quote real y su email salen bien.
+13. **Dependencia del comportamiento interno de CPQ:** la Quote temporal, su borrado y el rollback interno son lógica del paquete (oculta en los logs). Si una versión futura de CPQ cambia ese mecanismo, hay que volver a verificar el filtro.
 
 Pendientes de QA (detalle en [`docs/qa-pending.md`](../qa-pending.md)):
-- **QA-DEV3-01:** recepción del email y que el link abra la Quote.
+- ~~**QA-DEV3-01:** recepción del email y que el link abra la Quote.~~ ✅ **Cerrado el 05/10/2026:** llegaron Q-00092 y Q-00108 con su link funcionando, y la activación ya no manda el email de la Quote temporal.
 - **QA-DEV3-02:** el job nocturno procesa un Contract solo (sin correr el Batch a mano).
 - **QA-DEV3-03:** activación desde la UI con un usuario Direct Sales.
 - **QA-DEV3-04:** Amendment **después** de activar: ¿CPQ actualiza la Renewal Opportunity?

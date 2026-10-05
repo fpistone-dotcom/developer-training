@@ -220,7 +220,7 @@ sf data query --target-org smartbytes --query "SELECT ApexClass.Name, Status, Jo
 ## QA-DEV3-01 — Recepción del email de Renewal Quote y link
 
 **Requirement:** DEV #3, Parte 3 ("the email should include a link to the Quote").
-**Estado:** pendiente. Cubierto por tests unitarios (`renewalQuoteSendsEmailTest`, `renewalQuoteBulkEmailTest`). En el org (05/10/2026) el envío de Q-00092 terminó sin errores y sin Error Logs, pero falta confirmar que el email llegó.
+**Estado:** ✅ **CERRADO (05/10/2026, confirmado por Francisco).** Llegaron los emails de **Q-00092** y **Q-00108**, y sus links abren la Quote. Después del filtro de la Quote temporal de CPQ, la activación del Contract 00000111 **no** mandó email y el Batch mandó **uno solo** (Q-00108). El email de Q-00090 (link muerto, de la primera prueba) era la Quote temporal de CPQ: ver "Hallazgo" en [`code-review/DEV3.md`](code-review/DEV3.md), sección 2. Se conserva el detalle de abajo como guía para repetir la prueba.
 
 ### Pasos
 1. Abrir el inbox del Owner de **Q-00092** (frandev → fpistone@firstchairservices.com). Revisar también Spam.

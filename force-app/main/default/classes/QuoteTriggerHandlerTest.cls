@@ -185,12 +185,15 @@ private class QuoteTriggerHandlerTest {
     // ---------------------------------------------------------------------------------
 
     /**
-     * @description Positivo: al crear una Renewal Quote se manda el email, sin errores.
+     * @description Positivo: al crear una Renewal Quote pedida (Contract con Renewal Quoted
+     *              tildado) se manda el email, sin errores.
      */
     @isTest
     static void renewalQuoteSendsEmailTest() {
+        Id opportunityId = createRenewalOpportunity( true );
+
         Test.startTest();
-        insertRenewalQuotes( 1 );
+        insertRenewalQuotes( 1, opportunityId );
         Integer emailInvocations = Limits.getEmailInvocations();
         Test.stopTest();
 
@@ -204,8 +207,10 @@ private class QuoteTriggerHandlerTest {
      */
     @isTest
     static void renewalQuoteBulkEmailTest() {
+        Id opportunityId = createRenewalOpportunity( true );
+
         Test.startTest();
-        insertRenewalQuotes( BULK_SIZE );
+        insertRenewalQuotes( BULK_SIZE, opportunityId );
         Integer emailInvocations = Limits.getEmailInvocations();
         Test.stopTest();
 
@@ -224,6 +229,25 @@ private class QuoteTriggerHandlerTest {
         Test.stopTest();
 
         System.assertEquals( 0, emailInvocations, 'Una Quote que no es Renewal no debería mandar email' );
+    }
+
+    /**
+     * @description Negativo: una Renewal Quote cuyo Contract NO tiene Renewal Quoted tildado no
+     *              manda email. Es el caso de la Renewal Quote temporal que CPQ crea al activar
+     *              un Contract (para calcular la Renewal Opportunity) y borra segundos después.
+     */
+    @isTest
+    static void renewalQuoteNotRequestedNoEmailTest() {
+        Id opportunityId = createRenewalOpportunity( false );
+
+        Test.startTest();
+        insertRenewalQuotes( 1, opportunityId );
+        Integer emailInvocations = Limits.getEmailInvocations();
+        Test.stopTest();
+
+        System.assertEquals( 0, emailInvocations,
+            'Una Renewal Quote que nadie pidió (la temporal de CPQ) no debería mandar email' );
+        System.assertEquals( 0, [SELECT COUNT() FROM Error_Log__c], 'No debería haber errores' );
     }
 
     // ---------------------------------------------------------------------------------
@@ -251,15 +275,34 @@ private class QuoteTriggerHandlerTest {
     }
 
     /**
-     * @description Inserta Quotes de tipo Renewal (como las que genera CPQ), con Owner = el
-     *              usuario que corre el test.
+     * @description Crea un Contract y su Renewal Opportunity (como la que crea CPQ), con
+     *              SBQQ__RenewalQuoted__c en el valor indicado. Se llama ANTES de Test.startTest():
+     *              lo que haga CPQ al crear el Contract no cuenta en los límites que mide el test.
+     * @param renewalQuoted true = alguien pidió la Renewal Quote (el Batch o un usuario)
+     * @return Id de la Renewal Opportunity
+     */
+    private static Id createRenewalOpportunity( Boolean renewalQuoted ) {
+        Contract con = TestDataFactory.buildContracts( getAccountId(), Date.today(), 12, 1 )[0];
+        con.SBQQ__RenewalQuoted__c = renewalQuoted;
+        insert con;
+        Opportunity opp = TestDataFactory.buildRenewalOpportunities( getAccountId(),
+            new List<Contract>{ con }, 'Prospecting' )[0];
+        insert opp;
+        return opp.Id;
+    }
+
+    /**
+     * @description Inserta Quotes de tipo Renewal (como las que genera CPQ) en la Renewal
+     *              Opportunity indicada, con Owner = el usuario que corre el test.
      * @param numberOfQuotes Cantidad de Quotes
+     * @param opportunityId  Renewal Opportunity de las Quotes
      * @return Quotes insertadas
      */
-    private static List<SBQQ__Quote__c> insertRenewalQuotes( Integer numberOfQuotes ) {
+    private static List<SBQQ__Quote__c> insertRenewalQuotes( Integer numberOfQuotes, Id opportunityId ) {
         List<SBQQ__Quote__c> quoteList = TestDataFactory.buildQuotes( getAccountId(), numberOfQuotes, 'Draft', ORIGINAL_EXPIRATION_DATE );
         for ( SBQQ__Quote__c quote : quoteList ) {
             quote.SBQQ__Type__c = QuoteTriggerHandler.TYPE_RENEWAL;
+            quote.SBQQ__Opportunity2__c = opportunityId;
         }
         insert quoteList;
         return quoteList;

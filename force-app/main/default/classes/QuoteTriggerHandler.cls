@@ -132,8 +132,10 @@ public with sharing class QuoteTriggerHandler {
 
     /**
      * @description Req (F) y (G). Manda un email al Owner de cada Renewal Quote nueva, con un
-     *              link a la Quote. Avisa por cualquier Renewal Quote, la genere el Batch del
-     *              DEV #3 o un usuario a mano (supuesto confirmado).
+     *              link a la Quote. Avisa por cualquier Renewal Quote PEDIDA (Contract con
+     *              SBQQ__RenewalQuoted__c = true), la pida el Batch del DEV #3 o un usuario a mano
+     *              (supuesto confirmado). No avisa por la Renewal Quote temporal que CPQ crea y
+     *              borra al activar el Contract.
      *
      *              - Destinatario: setTargetObjectId( OwnerId ). Los emails a usuarios internos
      *                no cuentan para el límite diario de emails del org (15 en Developer Edition).
@@ -159,12 +161,29 @@ public with sharing class QuoteTriggerHandler {
         // El link abre el registro en Lightning: https://<dominio del org>/<Id de la Quote>
         String orgUrl = URL.getOrgDomainUrl().toExternalForm();
 
-        // Query para traer los nombres del Account y de la Opportunity (no vienen en Trigger.new)
-        List<SBQQ__Quote__c> renewalQuoteList = [
-            SELECT Id, Name, OwnerId, SBQQ__Account__r.Name, SBQQ__Opportunity2__r.Name
+        // Query para traer los nombres del Account y de la Opportunity y el flag del Contract que
+        // renueva (Quote -> Opportunity -> Contract). Nada de eso viene en Trigger.new.
+        List<SBQQ__Quote__c> quoteList = [
+            SELECT Id, Name, OwnerId, SBQQ__Account__r.Name, SBQQ__Opportunity2__r.Name,
+                SBQQ__Opportunity2__r.SBQQ__RenewedContract__r.SBQQ__RenewalQuoted__c
             FROM SBQQ__Quote__c
             WHERE Id IN :renewalQuoteIdSet
         ];
+
+        // Solo se avisa por las Renewal Quotes que alguien PIDIÓ (el Batch o un usuario tildó
+        // SBQQ__RenewalQuoted__c en el Contract). Al activar un Contract, CPQ crea una Renewal
+        // Quote TEMPORAL para calcular los precios de la Renewal Opportunity y la borra segundos
+        // después (verificado en el org, Q-00083 y Q-00090). En ese momento el flag está en false.
+        // Se compara con == true porque si la Opportunity no tiene Contract el valor llega null.
+        List<SBQQ__Quote__c> renewalQuoteList = new List<SBQQ__Quote__c>();
+        for ( SBQQ__Quote__c quote : quoteList ) {
+            if ( quote.SBQQ__Opportunity2__r.SBQQ__RenewedContract__r.SBQQ__RenewalQuoted__c == true ) {
+                renewalQuoteList.add( quote );
+            }
+        }
+        if ( renewalQuoteList.isEmpty() ) {
+            return;
+        }
 
         List<Messaging.SingleEmailMessage> emailList = new List<Messaging.SingleEmailMessage>();
         for ( SBQQ__Quote__c renewalQuote : renewalQuoteList ) {
