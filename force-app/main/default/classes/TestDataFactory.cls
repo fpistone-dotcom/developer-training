@@ -89,13 +89,55 @@ public class TestDataFactory {
      * @return El Contract insertado
      */
     public static Contract createContract( Id accountId, Date startDate, Integer contractTerm ) {
-        Contract con = new Contract();
-        con.AccountId = accountId;
-        con.StartDate = startDate;
-        con.ContractTerm = contractTerm;
-        con.Status = 'Draft';
+        Contract con = buildContracts( accountId, startDate, contractTerm, 1 )[0];
         insert con;
         return con;
+    }
+
+    /**
+     * @description Arma Contracts en Draft con el inicio y el plazo indicados. No los inserta.
+     *              Salesforce no deja insertar un Contract ya Activated: para activarlo hay que
+     *              insertarlo en Draft y después hacer un update del Status.
+     * @param accountId         Account de los Contracts
+     * @param startDate         Fecha de inicio
+     * @param contractTerm      Plazo en meses (puede ser null: evergreen)
+     * @param numberOfContracts Cantidad de Contracts a armar
+     * @return Lista de Contracts sin insertar
+     */
+    public static List<Contract> buildContracts( Id accountId, Date startDate, Integer contractTerm, Integer numberOfContracts ) {
+        List<Contract> contractList = new List<Contract>();
+        for ( Integer i = 0; i < numberOfContracts; i++ ) {
+            Contract con = new Contract();
+            con.AccountId = accountId;
+            con.StartDate = startDate;
+            con.ContractTerm = contractTerm;
+            con.Status = 'Draft';
+            contractList.add( con );
+        }
+        return contractList;
+    }
+
+    /**
+     * @description Arma una Renewal Opportunity por cada Contract, como las que crea CPQ
+     *              (SBQQ__Renewal__c = true y SBQQ__RenewedContract__c = el Contract). No las inserta.
+     * @param accountId    Account de las Opportunities
+     * @param contractList Contracts que renueva cada Opportunity (ya insertados)
+     * @param stageName    Etapa (CPQ las crea en 'Prospecting')
+     * @return Lista de Opportunities sin insertar
+     */
+    public static List<Opportunity> buildRenewalOpportunities( Id accountId, List<Contract> contractList, String stageName ) {
+        List<Opportunity> opportunityList = new List<Opportunity>();
+        for ( Contract con : contractList ) {
+            Opportunity opp = new Opportunity();
+            opp.Name = 'Test Renewal Opportunity';
+            opp.AccountId = accountId;
+            opp.StageName = stageName;
+            opp.CloseDate = Date.today().addDays( 30 );
+            opp.SBQQ__Renewal__c = true;
+            opp.SBQQ__RenewedContract__c = con.Id;
+            opportunityList.add( opp );
+        }
+        return opportunityList;
     }
 
     /**

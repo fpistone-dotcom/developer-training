@@ -214,3 +214,94 @@ sf data query --target-org smartbytes --query "SELECT ApexClass.Name, Status, Jo
 | 1 | *Active Subscriptions* | Bajó en 1, sin que nadie editara nada |
 | 2 | Job | `ActiveSubscriptionRecountBatch` **Completed**, 0 errores, en *Setup → Apex Jobs* |
 | 3 | Error Logs | Vacía |
+
+---
+
+## QA-DEV3-01 — Recepción del email de Renewal Quote y link
+
+**Requirement:** DEV #3, Parte 3 ("the email should include a link to the Quote").
+**Estado:** pendiente. Cubierto por tests unitarios (`renewalQuoteSendsEmailTest`, `renewalQuoteBulkEmailTest`). En el org (05/10/2026) el envío de Q-00092 terminó sin errores y sin Error Logs, pero falta confirmar que el email llegó.
+
+### Pasos
+1. Abrir el inbox del Owner de **Q-00092** (frandev → fpistone@firstchairservices.com). Revisar también Spam.
+2. Buscar el asunto **"Renewal Quote created: Q-00092"**.
+3. Hacer clic en el link.
+
+### Resultados esperados
+
+| # | Qué verificar | Esperado |
+|---|---|---|
+| 1 | Email recibido | Sí, con Quote, Account ("Burlington Textiles Corp of America") y Renewal Opportunity |
+| 2 | Link | Abre Q-00092 en Lightning (después de loguearse) |
+| 3 | Error Logs | Vacía |
+
+### Si falla
+| Síntoma | Causa probable | Siguiente paso |
+|---|---|---|
+| No llegó y no hay Error Log | Filtro de spam del dominio o Deliverability limitado | *Setup → Deliverability* (Access Level = All email) y *Setup → Email Log Files* |
+| Error Log "Renewal Quote email failed" | Owner inactivo, Queue como Owner o Deliverability apagado | Leer `Error_Message__c` |
+
+---
+
+## QA-DEV3-02 — El job nocturno genera una Renewal Quote solo
+
+**Requirement:** DEV #3, Parte 2 ("30 days before the end of a Contract").
+**Estado:** pendiente. Cubierto por tests unitarios y probado en el org corriendo el Batch **a mano** (Contract 00000109 → Q-00092). El job *Renewal Quote Generation - Nightly* se programó el 05/10/2026 y todavía no corrió.
+
+### Precondiciones
+- Job *Renewal Quote Generation - Nightly* en WAITING (*Setup → Scheduled Jobs*).
+- Un Contract **Activated**, con *Renewal Quoted* destildado y que venza dentro de los próximos 30 días. Se puede usar el **00000110** **después** de la demo (activándolo), o armar otro con `scripts/apex/dev3-1/2/3-*.apex`.
+
+### Pasos
+1. Dejar el Contract preparado y no tocarlo.
+2. Al día siguiente, después de las 3:00 (America/Los_Angeles), revisar el Contract, la Renewal Opportunity y los jobs.
+
+### Resultados esperados
+
+| # | Qué verificar | Dónde | Esperado |
+|---|---|---|---|
+| 1 | *Renewal Quoted* | Contract | Tildado |
+| 2 | Renewal Quote | Related list de la Opportunity | Type Renewal, Primary, con las cantidades del Contract |
+| 3 | Etapa | Renewal Opportunity | Proposal/Price Quote |
+| 4 | Jobs | *Setup → Apex Jobs* | `RenewalQuoteBatch` Completed, 0 errores; 1 `QueueableCalculatorService` Completed por Contract |
+| 5 | Email | Inbox del Owner | Recibido (ver QA-DEV3-01) |
+| 6 | Error Logs | Tab Error Logs | Vacía |
+
+---
+
+## QA-DEV3-03 — Activación desde la UI con un usuario Direct Sales
+
+**Requirement:** DEV #3, Parte 1.
+**Estado:** pendiente. En el org la activación se probó con frandev (System Administrator) por API.
+
+### Pasos
+1. Loguearse como **sh.dsales** (Direct Sales).
+2. Abrir un Contract en Draft (con Subscriptions) → Edit → Status = Activated → Save.
+
+### Resultados esperados
+
+| # | Qué verificar | Esperado |
+|---|---|---|
+| 1 | Guardado | Sin errores. Si Salesforce dice que falta permiso, el perfil necesita "Activate Contracts" (es IC: consultarlo) |
+| 2 | *Renewal Forecast* | Tildado |
+| 3 | *Renewal Opportunity* | Con link, en Prospecting, con los productos del Contract |
+| 4 | Error Logs | Vacía |
+
+---
+
+## QA-DEV3-04 — Amendment después de activar: ¿CPQ actualiza la Renewal Opportunity?
+
+**Requirement:** DEV #3 + demo ("Contract Change Use Cases ... reflejados en la Renewal Opportunity").
+**Estado:** pendiente (dato para el Code Review). En las pruebas los Amendments se hicieron **antes** de activar, y la Renewal Opportunity nació con 215. No se probó un Amendment **después** de que la Renewal Opportunity ya existe.
+
+### Pasos
+1. En un Contract activado con Renewal Opportunity (por ejemplo, 00000109), hacer un Amendment (+10) con `scripts/apex/dev3-3-amendment.apex` → Ordered.
+2. Esperar ~30 s y revisar los productos de la Renewal Opportunity.
+
+### Resultados esperados
+
+| # | Qué verificar | Esperado |
+|---|---|---|
+| 1 | Subscription nueva | +10 apuntando a la original |
+| 2 | Productos de la Renewal Opportunity | **Observar y documentar:** ¿pasa de 215 a 225? |
+| 3 | Error Logs | Vacía |

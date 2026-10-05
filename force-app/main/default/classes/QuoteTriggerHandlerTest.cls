@@ -177,6 +177,56 @@ private class QuoteTriggerHandlerTest {
     }
 
     // ---------------------------------------------------------------------------------
+    // DEV #3 (Parte 3): email al Owner de una Renewal Quote nueva
+    //
+    // En un test los emails no se envían de verdad, pero Salesforce cuenta las llamadas a
+    // Messaging.sendEmail. Limits.getEmailInvocations() se lee ANTES de Test.stopTest(),
+    // porque mide la transacción que está entre startTest y stopTest.
+    // ---------------------------------------------------------------------------------
+
+    /**
+     * @description Positivo: al crear una Renewal Quote se manda el email, sin errores.
+     */
+    @isTest
+    static void renewalQuoteSendsEmailTest() {
+        Test.startTest();
+        insertRenewalQuotes( 1 );
+        Integer emailInvocations = Limits.getEmailInvocations();
+        Test.stopTest();
+
+        System.assertEquals( 1, emailInvocations, 'Una Renewal Quote nueva debería disparar un envío de email' );
+        System.assertEquals( 0, [SELECT COUNT() FROM Error_Log__c], 'El envío no debería generar errores' );
+    }
+
+    /**
+     * @description Bulk: 200 Renewal Quotes creadas juntas usan UN solo envío (con 200 emails),
+     *              no 200 (el límite es 10 envíos por transacción).
+     */
+    @isTest
+    static void renewalQuoteBulkEmailTest() {
+        Test.startTest();
+        insertRenewalQuotes( BULK_SIZE );
+        Integer emailInvocations = Limits.getEmailInvocations();
+        Test.stopTest();
+
+        System.assertEquals( 1, emailInvocations, 'Las 200 Renewal Quotes deberían enviarse en una sola llamada' );
+        System.assertEquals( 0, [SELECT COUNT() FROM Error_Log__c], 'El envío no debería generar errores' );
+    }
+
+    /**
+     * @description Negativo: una Quote que no es Renewal no manda email.
+     */
+    @isTest
+    static void nonRenewalQuoteNoEmailTest() {
+        Test.startTest();
+        insertQuotes( 1, 'Draft' );
+        Integer emailInvocations = Limits.getEmailInvocations();
+        Test.stopTest();
+
+        System.assertEquals( 0, emailInvocations, 'Una Quote que no es Renewal no debería mandar email' );
+    }
+
+    // ---------------------------------------------------------------------------------
     // Métodos de ayuda
     // ---------------------------------------------------------------------------------
 
@@ -196,6 +246,21 @@ private class QuoteTriggerHandlerTest {
      */
     private static List<SBQQ__Quote__c> insertQuotes( Integer numberOfQuotes, String status ) {
         List<SBQQ__Quote__c> quoteList = TestDataFactory.buildQuotes( getAccountId(), numberOfQuotes, status, ORIGINAL_EXPIRATION_DATE );
+        insert quoteList;
+        return quoteList;
+    }
+
+    /**
+     * @description Inserta Quotes de tipo Renewal (como las que genera CPQ), con Owner = el
+     *              usuario que corre el test.
+     * @param numberOfQuotes Cantidad de Quotes
+     * @return Quotes insertadas
+     */
+    private static List<SBQQ__Quote__c> insertRenewalQuotes( Integer numberOfQuotes ) {
+        List<SBQQ__Quote__c> quoteList = TestDataFactory.buildQuotes( getAccountId(), numberOfQuotes, 'Draft', ORIGINAL_EXPIRATION_DATE );
+        for ( SBQQ__Quote__c quote : quoteList ) {
+            quote.SBQQ__Type__c = QuoteTriggerHandler.TYPE_RENEWAL;
+        }
         insert quoteList;
         return quoteList;
     }
