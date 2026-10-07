@@ -346,3 +346,45 @@ Seguir el guion de [`code-review/DEV5.md`](code-review/DEV5.md), sección 8.B (N
 | 4 | Contract | Creado unos segundos después, con *Active Subscriptions* = 1 (DEV #4) |
 | 5 | Error Logs | Vacía |
 | 6 | Anotar | Número de Quote, Order y Contract creados, para la evidencia del Code Review |
+
+---
+
+## QA-IC08-01 — Quote Document: templates DRAFT / FINAL
+
+**Requirement:** IC-08 (Quote Document del worksheet).
+**Estado:** pendiente. Arreglado el 07/10/2026 y verificado por API: se generaron PDFs con `SBQQ.QuoteDocumentAPI.Save` (Q-00108 con el DRAFT y Q-00109 con el FINAL, documentos "IC-08 check") y se leyó su contenido. Falta mirarlos **en la UI** con *Generate Document*.
+
+### Qué se cambió (todo en registros de CPQ, salvo el Flow)
+
+| # | Problema | Cambio | Dónde |
+|---|---|---|---|
+| 1 | Columnas PART # y DESCRIPTION vacías | Columna `PART #` → **`PRODUCT`** (`SBQQ__ProductName__c`) en los 2 templates. `SBQQ__Description__c` de las líneas de Q-00108/Q-00109 copiada de `Product2.Description` (13 líneas; el Bundle no tiene Description) | `SBQQ__LineColumn__c`, `SBQQ__QuoteLine__c` |
+| 2 | El DRAFT no decía DRAFT | `SBQQ__WatermarkId__c` = imagen nativa de CPQ **"Draft Watermark"** (`015fj00000A3xnOAAR`, carpeta *Salesforce CPQ Assets*) **solo en el template DRAFT**. Flow nuevo **`Quote_Set_Watermark_Shown`** (before-save, create y update) que tilda `SBQQ__WatermarkShown__c` en todas las Quotes + backfill de las 92 existentes | Template DRAFT, Flow, `SBQQ__Quote__c` |
+| 3 | ¿Shawn puede elegir FINAL en una Quote no aprobada? | **No hizo falta cambiar nada:** Francisco lo probó con Shawn y no puede elegirlo | — |
+| 4 | Sin logo | La URL del worksheet devuelve **404** (es de otro org). Francisco pasó la imagen (`force-app/main/default/contentassets/smartbytes-logo.png`, 527×581 px). Se subió como Document público **"SmartBytes Logo"** (`015fj00000AqrDlAAJ`, carpeta *SteelBrick CPQ Template Resources*) y se puso en `SBQQ__LogoDocumentId__c` de los 2 templates. **El PNG se guardó con 600 dpi:** CPQ (Apache FOP) dibuja la imagen a su resolución, y a 72 dpi (el default) ocupaba 527×581 pt, casi toda la hoja. Con 600 dpi mide 63×70 pt, arriba a la izquierda, sin tapar el texto (medido en el PDF) | Document, los 2 templates |
+| 5 | Header "FirstChair" y `, , , US / Phone: Fax: Email:` | `CompanyName = SmartBytes` + datos de contacto **ficticios** (autorizados por Francisco): 100 Market St, San Francisco, CA 94105, United States · (415) 555-0100 · Fax (415) 555-0101 · sales@smartbytes.example | Los 2 templates |
+| 6 | `{!quote.SBQQ__ExpirationDate__c}` literal en los términos | Venía del **Quote Term QT-0005** (no del template). Se reescribió sin merge field: remite al "Expires On" que ya imprime el header | `SBQQ__QuoteTerm__c` |
+
+**Por qué el watermark necesita el Flow:** CPQ imprime la marca solo si el template tiene `WatermarkId` **y** la Quote tiene `WatermarkShown = true` (verificado: con solo el `WatermarkId`, el PDF salió sin imagen). El default de ese campo es `false` y no se puede cambiar porque es del paquete gestionado. Con `true` en todas las Quotes, decide el template: el DRAFT tiene imagen y el FINAL no.
+
+### Pasos
+1. Abrir **Q-00108** (Draft) → *Generate Document* → template **SmartBytes Quote - DRAFT** → Preview / Save.
+2. Abrir **Q-00109** (Approved) → *Generate Document* → template **SmartBytes Quote - FINAL** → Preview / Save.
+3. Crear una Quote nueva y confirmar que nace con *Watermark Shown* tildado.
+
+### Resultados esperados
+
+| # | Qué verificar | Esperado |
+|---|---|---|
+| 1 | Marca de agua | Q-00108 (DRAFT): sello gris **"DRAFT"** en diagonal. Q-00109 (FINAL): **sin** marca |
+| 2 | Tabla | Columnas QTY · **PRODUCT** · DESCRIPTION con nombre y descripción de cada producto |
+| 3 | Header | Logo de SmartBytes (≈ 2,2 × 2,5 cm) arriba a la izquierda, debajo "SmartBytes", dirección, teléfono, fax y email, sin comas ni labels vacíos |
+| 4 | Términos | Último párrafo sin `{!...}` y remitiendo a "Expires On" |
+| 5 | Quote nueva | `SBQQ__WatermarkShown__c = true` |
+
+### Limitaciones conocidas
+- **Quote Lines nuevas:** `SBQQ__Description__c` solo se completó en Q-00108/Q-00109. En otras Quotes la columna DESCRIPTION sale vacía, salvo que la línea tenga descripción (CPQ no la copia sola del producto). Para que se complete siempre habría que agregar una automatización o un Price Rule (IC, no se hizo).
+- **Logo:** si se cambia la imagen, guardarla con un DPI alto (por ejemplo, 600) y reemplazar el Body del **mismo** Document; si no, sale gigante. Con Q-00108 el header más alto hace que el PDF pase de 1 a 2 páginas.
+- **Ship To / Bill To de Q-00109** aparecen como `,` porque la Account *QA Demo Corp* no tiene dirección cargada (es un dato de la cuenta, no del template).
+- El Quote Term QT-0005 es **estándar**: el cambio de texto aplica a todos los templates.
+- Quedaron 9 documentos de verificación "IC-08 check": 5 en Q-00108 y 4 en Q-00109. Solo el **último** de cada Quote tiene todos los cambios (los anteriores son de pruebas intermedias: sin marca, sin header o con el logo gigante). Antes de la demo conviene borrarlos para que no se muestre un PDF viejo.
