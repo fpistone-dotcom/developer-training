@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>DEV #4. Gives access to see the Active Subscriptions field on Contract (read only: the automation fills it in).</description>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>Contract.Active_Subscriptions__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <hasActivationRequired>false</hasActivationRequired>
+    <label>Active Subscriptions Access</label>
+</PermissionSet>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <classAccesses>
+        <apexClass>QuoteProgressController</apexClass>
+        <enabled>true</enabled>
+    </classAccesses>
+    <description>DEV #5. Gives access to run QuoteProgressController, the Apex class of the Quote Progress component on the Quote.</description>
+    <hasActivationRequired>false</hasActivationRequired>
+    <label>Quote Progress Access</label>
+</PermissionSet>
