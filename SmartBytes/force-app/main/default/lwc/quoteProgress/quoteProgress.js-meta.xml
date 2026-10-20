@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>67.0</apiVersion>
+    <description>DEV #5: shows the Quote progress with a green check or a red X for each step.</description>
+    <!-- Visible in the Lightning App Builder -->
+    <isExposed>true</isExposed>
+    <masterLabel>Quote Progress</masterLabel>
+    <targets>
+        <target>lightning__RecordPage</target>
+    </targets>
+    <targetConfigs>
+        <!-- Can only be used on CPQ Quote record pages -->
+        <targetConfig targets="lightning__RecordPage">
+            <objects>
+                <object>SBQQ__Quote__c</object>
+            </objects>
+        </targetConfig>
+    </targetConfigs>
+</LightningComponentBundle>
