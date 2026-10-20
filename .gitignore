@@ -46,3 +46,8 @@ $RECYCLE.BIN/
 **/__pycache__/
 **/.venv/
 **/venv/
+
+# Study docs / local outputs (not part of the project)
+.claude/
+Claude outputs/
+outputs/
